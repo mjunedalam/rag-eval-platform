@@ -1,1 +1,17 @@
-# TODO: run evaluation suite and block merge on regression
+# Placeholder until the evaluation phase: will run the golden dataset on every
+# pull request and block the merge when a metric falls below its threshold
+# (see docs/evaluation_methodology.md). Manual trigger only for now.
+name: Evaluation gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: Evaluate against golden dataset
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Evaluation gate not implemented yet."
