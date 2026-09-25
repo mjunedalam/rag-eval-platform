@@ -32,7 +32,9 @@ The golden dataset is the ground truth for evaluation. It lives in `data/golden_
 | `question` | The query as a user would type it. |
 | `expected_answer` | Reference answer written by a domain expert. |
 | `relevant_doc_ids` | Source documents that contain the answer. |
-| `query_type` | Slice used to break down scores: `short`, `multi_hop`, `ambiguous`, … |
+| `query_type` | Slice used to break down scores: `short`, `paraphrase` (different wording from the source), `multi_hop` (needs two or more documents), `ambiguous` |
+
+The current corpus (`data/raw/`, 14 Markdown documents on RAG and LLM evaluation) and its 30 golden examples are a starter set; `evaluation/golden_dataset.py` validates the file and checks that every `relevant_doc_ids` entry exists in the corpus.
 
 **Curation rules**
 
