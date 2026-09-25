@@ -1,0 +1,1 @@
+"""Centralised application settings."""
