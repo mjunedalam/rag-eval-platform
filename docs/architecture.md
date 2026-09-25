@@ -97,9 +97,9 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | uv | Dependency management, virtualenv, lockfile | in use |
 | | hatchling | Build backend for the `src/` package | in use |
 | | Pytest | Test runner for unit, integration and evaluation tests | in use |
-| | Ruff | Lint and format | proposed |
-| | mypy | Static type checking of the protocol interfaces | proposed |
-| | pydantic-settings | Typed settings from env / `.env` in `config/settings.py` | proposed |
+| | Ruff | Lint and format | in use |
+| | mypy | Static type checking of the protocol interfaces | in use |
+| | pydantic-settings | Typed settings from env / `.env` in `config/settings.py` | in use |
 | **1. Ingestion** | LangChain (document loaders, `langchain-text-splitters`) | Load Markdown/text; fixed-size and recursive chunking | chosen |
 | | Sentence Transformers | Local, free embedding model (default for dev and CI) | chosen |
 | | OpenAI Embeddings | Hosted embedding alternative | chosen |
@@ -114,9 +114,10 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | DeepEval | Pytest-style LLM evaluation tests | chosen |
 | | Custom `evaluation/metrics.py` | Deterministic retrieval metrics: Precision@k, Recall@k, MRR, NDCG@k | chosen |
 | | Pandas | Golden dataset and score reports, per-`query_type` breakdowns | chosen |
-| **5. CI/CD gate** | GitHub Actions | `ci.yml` (lint + unit tests), `evaluation_gate.yml` (block merge on regression) | chosen |
-| | `astral-sh/setup-uv` action | Install uv and cache dependencies in CI | proposed |
-| | pytest-cov | Coverage report in CI | proposed |
+| **5. CI/CD gate** | GitHub Actions | `ci.yml` (lint, types, unit tests, secret scan) in use; `evaluation_gate.yml` (block merge on regression) chosen | in use |
+| | `astral-sh/setup-uv` action | Install uv and cache dependencies in CI | in use |
+| | pytest-cov | Coverage report in CI | in use |
+| | gitleaks (GitHub Action) | Fail CI if a secret is committed | in use |
 | **6. API and deployment** | FastAPI | `GET /health`, `POST /query` | chosen |
 | | Uvicorn | ASGI server for the API | proposed |
 | | httpx | FastAPI `TestClient` for integration tests | proposed |

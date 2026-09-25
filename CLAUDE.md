@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This is an early-stage scaffold. Every module under `src/rag_eval_platform/`, every test file, every script in `scripts/`, the CI workflows, and the Docker files are still placeholders: each holds only a docstring or a `# TODO`. `data/golden_dataset/qa_pairs.json` is an empty list and `pyproject.toml` has no runtime dependencies yet. The intended design is written up in `docs/architecture.md` and `docs/evaluation_methodology.md`. Treat those two documents as the spec when implementing a module. The tools for each phase, and whether each is in use, chosen or only proposed, are listed in the "Tooling by phase" table in `docs/architecture.md`. Add a dependency only when its phase starts, and ask before adding a *proposed* one.
+Phase 0 (project setup) is done. `config/settings.py` and `config/logging_config.py` are implemented and tested, and `.github/workflows/ci.yml` runs lint, types, unit tests and a secret scan. Everything else is still a placeholder holding only a docstring or a `# TODO`: the other modules under `src/rag_eval_platform/`, the scripts, `evaluation_gate.yml` and the Docker files. `data/golden_dataset/qa_pairs.json` is an empty list. The intended design is written up in `docs/architecture.md` and `docs/evaluation_methodology.md`. Treat those two documents as the spec when implementing a module. The tools for each phase, and whether each is in use, chosen or only proposed, are listed in the "Tooling by phase" table in `docs/architecture.md`. Add a dependency only when its phase starts, and ask before adding a *proposed* one.
 
 ## Commands
 
@@ -16,13 +16,16 @@ uv run pytest                                            # all tests
 uv run pytest tests/unit/test_chunking.py                # one file
 uv run pytest tests/unit/test_chunking.py::test_name     # one test
 uv run pytest tests/unit                                 # one tier: unit | integration | evaluation
+uv run pytest --cov                                      # with coverage (branch, missing lines)
+uv run ruff check . && uv run ruff format --check .      # lint + format check (ruff format . to fix)
+uv run mypy src tests                                    # strict type check
 uv add <pkg>            # runtime dependency
 uv add --dev <pkg>      # dev tool
 ```
 
-Commit `uv.lock` together with any `pyproject.toml` change. No linter or formatter is configured yet. While the test files are empty, `pytest` exits with code 5 (no tests collected).
+Commit `uv.lock` together with any `pyproject.toml` change. CI runs `uv sync --locked`, so a stale lockfile fails the build. Before committing, run the same checks CI runs: Ruff lint, Ruff format, `mypy src tests` and the unit tests. mypy is `strict`, so every function needs full annotations. Pytest uses `--strict-markers`; the registered markers are `integration` and `evaluation`.
 
-Secrets such as `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` come from `.env` (copy it from `.env.example`). `.env` is git-ignored.
+Configuration is read only through `get_settings()` (cached, frozen). Env vars use the `RAG_` prefix, e.g. `RAG_TOP_K=10`. The exceptions are `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`, which are unprefixed and held as `SecretStr`. Everything has a default, so tests and CI need no keys. Put local values in `.env` (copy it from `.env.example`); `.env` is git-ignored. Log with the standard `logging` module after calling `configure_logging()`, which writes one JSON object per line; pass structured fields with `extra={...}`.
 
 ## Architecture
 
