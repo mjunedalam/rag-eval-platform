@@ -6,3 +6,11 @@ __pycache__/
 .coverage
 .env
 .DS_Store
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials*.json

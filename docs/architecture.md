@@ -87,6 +87,46 @@ All settings come from environment variables (see `.env.example`); nothing is ha
 - **Generation**: LLM provider, model name, API key.
 - **Evaluation**: golden dataset path and metric thresholds.
 
+## Tooling by phase
+
+Phases are listed in build order. **Status**: *in use* = already installed or configured; *chosen* = decided in these docs, not yet added; *proposed* = recommended to fill a gap, confirm before adding. Dependencies are added with `uv add` only when the phase that needs them starts.
+
+| Phase | Tool | Purpose | Status |
+|---|---|---|---|
+| **0. Project setup** | Python 3.12 | Runtime (pinned in `.python-version`) | in use |
+| | uv | Dependency management, virtualenv, lockfile | in use |
+| | hatchling | Build backend for the `src/` package | in use |
+| | Pytest | Test runner for unit, integration and evaluation tests | in use |
+| | Ruff | Lint and format | proposed |
+| | mypy | Static type checking of the protocol interfaces | proposed |
+| | pydantic-settings | Typed settings from env / `.env` in `config/settings.py` | proposed |
+| **1. Ingestion** | LangChain (document loaders, `langchain-text-splitters`) | Load Markdown/text; fixed-size and recursive chunking | chosen |
+| | Sentence Transformers | Local, free embedding model (default for dev and CI) | chosen |
+| | OpenAI Embeddings | Hosted embedding alternative | chosen |
+| | tiktoken | Token counts for chunk sizing and cost estimates | proposed |
+| **2. Retrieval** | Chroma | Local / dev vector store, no external infra | chosen |
+| | Qdrant | Production vector store with metadata filtering | chosen |
+| | Sentence Transformers `CrossEncoder` | Optional re-ranker (e.g. an MS MARCO MiniLM cross-encoder) | proposed |
+| | NumPy | Vector math, similarity checks in tests | chosen |
+| **3. Generation** | Anthropic / OpenAI SDKs (via LangChain chat models) | LLM answer generation with `[n]` citations | chosen |
+| | LangGraph | Control flow beyond a linear chain (retry, confidence branching); add only when needed | chosen, deferred |
+| **4. Evaluation** | RAGAS | Primary generation metrics: faithfulness, answer relevance, context precision/recall | chosen |
+| | DeepEval | Pytest-style LLM evaluation tests | chosen |
+| | Custom `evaluation/metrics.py` | Deterministic retrieval metrics: Precision@k, Recall@k, MRR, NDCG@k | chosen |
+| | Pandas | Golden dataset and score reports, per-`query_type` breakdowns | chosen |
+| **5. CI/CD gate** | GitHub Actions | `ci.yml` (lint + unit tests), `evaluation_gate.yml` (block merge on regression) | chosen |
+| | `astral-sh/setup-uv` action | Install uv and cache dependencies in CI | proposed |
+| | pytest-cov | Coverage report in CI | proposed |
+| **6. API and deployment** | FastAPI | `GET /health`, `POST /query` | chosen |
+| | Uvicorn | ASGI server for the API | proposed |
+| | httpx | FastAPI `TestClient` for integration tests | proposed |
+| | Docker / Docker Compose | API image; API + Qdrant local stack | chosen |
+| **7. Observability** | Python `logging` (JSON lines) | Query, latency, cost and eval-run logs | chosen |
+| | Streamlit | Dashboard: scores over time, recent queries, latency | chosen |
+| | TruLens | Continuous quality tracking with feedback functions | chosen, optional |
+| **8. Security and governance** | Microsoft Presidio | Detect and mask PII at ingestion, before embedding | proposed |
+| | Vector store metadata filters (Chroma / Qdrant) | Retrieval-time access control | chosen |
+
 ## Deployment
 
 - `docker/Dockerfile` builds the API image; `docker/docker-compose.yml` runs the API alongside a Qdrant instance.

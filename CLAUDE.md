@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This is an early-stage scaffold. Every module under `src/rag_eval_platform/`, every test file, every script in `scripts/`, the CI workflows, and the Docker files are still placeholders: each holds only a docstring or a `# TODO`. `data/golden_dataset/qa_pairs.json` is an empty list and `pyproject.toml` has no runtime dependencies yet. The intended design is written up in `docs/architecture.md` and `docs/evaluation_methodology.md`. Treat those two documents as the spec when implementing a module.
+This is an early-stage scaffold. Every module under `src/rag_eval_platform/`, every test file, every script in `scripts/`, the CI workflows, and the Docker files are still placeholders: each holds only a docstring or a `# TODO`. `data/golden_dataset/qa_pairs.json` is an empty list and `pyproject.toml` has no runtime dependencies yet. The intended design is written up in `docs/architecture.md` and `docs/evaluation_methodology.md`. Treat those two documents as the spec when implementing a module. The tools for each phase, and whether each is in use, chosen or only proposed, are listed in the "Tooling by phase" table in `docs/architecture.md`. Add a dependency only when its phase starts, and ask before adding a *proposed* one.
 
 ## Commands
 
@@ -46,6 +46,12 @@ No module wires the layers end to end yet. Design decisions that span several mo
 - **Generation metrics**: RAGAS (primary) and DeepEval (pytest-style), scored by a pinned LLM judge that is a different or stronger model than the one being evaluated. Changing the judge model or prompt means re-baselining.
 - **Gate** (`evaluation/evaluator.py`, `scripts/run_evaluation.py`, `.github/workflows/evaluation_gate.yml`): fails the PR when any average is below its threshold. Starting thresholds are Recall@k 0.80, MRR 0.70, NDCG@k 0.70, Faithfulness 0.85, and Answer relevance 0.80. `ci.yml` is kept separate and covers lint plus unit tests.
 - Retrieval or prompt changes (chunk size, strategy, top-k, embedding model, re-ranking, prompt wording) need a before/after metrics table in the PR.
+
+## Secrets (hard rule)
+
+- **Never commit `.env`.** The same goes for any `.env.*` other than `.env.example`, which must keep empty values, and for any file that contains a password, API key, token, private key or credential. Real values live only in the git-ignored `.env`.
+- Stage files by name and read `git diff --cached` before every commit. Never bypass the local `.git/hooks/pre-commit` secret check with `--no-verify`.
+- If a secret is ever committed, stop and remove it from git history; a follow-up delete commit is not enough. Then rotate the key.
 
 ## Conventions
 

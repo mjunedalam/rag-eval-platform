@@ -33,6 +33,8 @@ Query → Embedding → Retrieval (+ re-rank) → Generation (with citations) �
 
 Python · LangChain / LangGraph · Chroma / Qdrant · OpenAI or Sentence Transformers embeddings · RAGAS · DeepEval · TruLens · Pytest · GitHub Actions · FastAPI · Docker · Streamlit
 
+See [Tooling by phase](docs/architecture.md#tooling-by-phase) for which tool is used in each phase.
+
 ## Status
 
 Early stage: the implementation is in progress.
