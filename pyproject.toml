@@ -9,12 +9,51 @@ description = "End-to-end RAG pipeline with automated evaluation and CI/CD gatin
 readme = "readme.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = []
+dependencies = [
+    "pydantic-settings>=2.15.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rag_eval_platform"]
 
 [dependency-groups]
 dev = [
+    "mypy>=2.3.1",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.9",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "S", "PT"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "src"
+packages = ["rag_eval_platform"]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: tests that need external services (vector store, network)",
+    "evaluation: golden-dataset evaluation and threshold checks",
+]
+
+[tool.coverage.run]
+source = ["rag_eval_platform"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
