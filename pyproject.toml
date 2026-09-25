@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rag-eval-platform"
+version = "0.1.0"
+description = "End-to-end RAG pipeline with automated evaluation and CI/CD gating."
+readme = "readme.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag_eval_platform"]
