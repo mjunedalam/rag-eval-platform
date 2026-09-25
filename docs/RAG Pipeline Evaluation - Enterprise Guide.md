@@ -11,7 +11,21 @@ There are two major layers of evaluation:
 
 On top of these, mature enterprise systems add a third layer: Continuous Production Observability.
 
-&#91;embedded content: three layers of RAG evaluation feeding into each other\]
+```
+┌──────────────────────────┐     ┌──────────────────────────┐
+│ 1. Retrieval Evaluation  │────▶│ 2. Generation Evaluation │
+│ Did we fetch the right   │     │ Did we answer correctly  │
+│ information?             │     │ from that information?   │
+└──────────────────────────┘     └──────────────────────────┘
+             ▲                                │
+             │                                ▼
+             │          ┌─────────────────────────────────────┐
+             └──────────│ 3. Continuous Production            │
+       new golden cases │    Observability                    │
+       and regressions  │ Is it still performing well, at     │
+                        │ scale, with real users?             │
+                        └─────────────────────────────────────┘
+```
 
 ---
 
@@ -40,7 +54,12 @@ Retrieval quality should be tracked across different query types (short queries,
 
 This measures whether the final answer produced by the LLM is correct, trustworthy, and properly grounded in the retrieved context.
 
-&#91;embedded content: end-to-end data flow, query to answer, five stages\]
+```
+┌────────────┐   ┌─────────────────┐   ┌─────────────────┐   ┌──────────────┐   ┌──────────────────┐
+│ 1. User    │──▶│ 2. Query        │──▶│ 3. Retrieval    │──▶│ 4. Generation│──▶│ 5. Evaluation    │
+│    Query   │   │    Embedding    │   │ top-k + rerank  │   │ LLM + prompt │   │    and Logging   │
+└────────────┘   └─────────────────┘   └─────────────────┘   └──────────────┘   └──────────────────┘
+```
 
 **Stage-by-stage breakdown:**
 
@@ -70,7 +89,16 @@ This measures whether the final answer produced by the LLM is correct, trustwort
 
 Evaluation does not stop after initial testing. In production, enterprise-grade RAG systems add:
 
-&#91;embedded content: production observability loop, logging through to golden dataset growth\]
+```
+┌─────────┐   ┌────────────────────┐   ┌──────────────────────┐   ┌──────────────┐
+│ Logging │──▶│ Automated          │──▶│ Human review /       │──▶│ Feedback     │
+│         │   │ background eval    │   │ drift detection      │   │ loops        │
+└─────────┘   └────────────────────┘   └──────────────────────┘   └──────┬───────┘
+     ▲                                                                   │
+     │                       ┌────────────────────────┐                  │
+     └───────────────────────│ Golden dataset grows   │◀─────────────────┘
+                             └────────────────────────┘
+```
 
 - **Logging**: Every real user query and its corresponding response are logged for later analysis.
 - **Automated Background Evaluation**: Automated evaluation jobs run continuously on sampled production traffic to catch regressions, such as a rising hallucination rate or degrading retrieval quality.
@@ -139,7 +167,21 @@ Goal: build a complete RAG system with a built-in evaluation and CI/CD pipeline,
 
 ## Full Project Architecture Diagram
 
-&#91;embedded content: full project architecture, ingestion through CI/CD gate\]
+```
+┌─────────────┐   ┌──────────────┐   ┌─────────────┐   ┌──────────────┐   ┌─────────────┐
+│  Ingestion  │──▶│ Vector store │──▶│  Retrieval  │──▶│  Generation  │──▶│  API layer  │
+│ load/chunk/ │   │ Chroma /     │   │ top-k +     │   │ LLM + cited  │   │  (FastAPI)  │
+│ embed       │   │ Qdrant       │   │ re-rank     │   │ answers      │   │             │
+└─────────────┘   └──────────────┘   └─────────────┘   └──────────────┘   └──────┬──────┘
+                                                                                 │
+                        ┌────────────────────────────────────────────────────────┤
+                        ▼                                                        ▼
+            ┌────────────────────────┐   ┌──────────────────────┐   ┌──────────────────────┐
+            │ Evaluation suite       │──▶│ CI/CD gate           │   │ Observability        │
+            │ golden dataset + RAGAS │   │ GitHub Actions blocks│   │ logs + scores to a   │
+            │ / DeepEval             │   │ merge on regression  │   │ Streamlit dashboard  │
+            └────────────────────────┘   └──────────────────────┘   └──────────────────────┘
+```
 
 This single view ties every piece together: ingestion feeds the vector store, which serves retrieval, which feeds generation. Generation is exposed through an API layer, continuously checked by the evaluation suite, and gated by CI/CD before anything ships; logs and scores also stream out to the observability dashboard in parallel.
 
