@@ -1,1 +1,212 @@
-[]
+[
+  {
+    "id": "overview-001",
+    "question": "What are the two stages of a RAG system?",
+    "expected_answer": "An offline ingestion stage that loads, chunks, embeds and stores documents in a vector database, and an online query stage that embeds the question, retrieves (and optionally re-ranks) chunks and has the language model answer from them.",
+    "relevant_doc_ids": ["rag_overview.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "overview-002",
+    "question": "Why would a company choose RAG instead of retraining its model every time documents change?",
+    "expected_answer": "Because the document store can be updated without retraining or fine-tuning, private data never has to enter the training set, answers can cite their sources, and grounding reduces hallucination.",
+    "relevant_doc_ids": ["rag_overview.md"],
+    "query_type": "paraphrase"
+  },
+  {
+    "id": "chunking-001",
+    "question": "Which chunking strategy is the most common production default and why?",
+    "expected_answer": "Recursive chunking, because it splits on paragraph breaks, then line breaks, then spaces, keeping paragraphs and sentences intact far more often than fixed-size chunking at almost no extra cost.",
+    "relevant_doc_ids": ["chunking_strategies.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "chunking-002",
+    "question": "What goes wrong when you cut documents every 500 tokens regardless of their structure?",
+    "expected_answer": "Fixed-size chunking can cut a sentence in half or split a table or a numbered procedure across two chunks, which hurts retrieval quality.",
+    "relevant_doc_ids": ["chunking_strategies.md"],
+    "query_type": "paraphrase"
+  },
+  {
+    "id": "chunking-003",
+    "question": "What is chunk overlap and how large is it usually?",
+    "expected_answer": "Overlap repeats the end of one chunk at the start of the next so boundary facts stay retrievable; it is commonly 10 to 20 percent of the chunk size and must be smaller than the chunk size.",
+    "relevant_doc_ids": ["chunking_strategies.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "embeddings-001",
+    "question": "Why must queries and documents be embedded with the same model?",
+    "expected_answer": "Vectors from different models live in different vector spaces, so comparing them gives meaningless similarity scores; changing the embedding model means re-embedding the whole corpus.",
+    "relevant_doc_ids": ["embeddings.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "embeddings-002",
+    "question": "My semantic search misses exact error codes and product numbers. What can fix that?",
+    "expected_answer": "Hybrid search, which combines dense embeddings with keyword search such as BM25, because dense embeddings can miss exact matches like codes and rare names.",
+    "relevant_doc_ids": ["embeddings.md"],
+    "query_type": "paraphrase"
+  },
+  {
+    "id": "vectordb-001",
+    "question": "What is HNSW?",
+    "expected_answer": "Hierarchical Navigable Small World, the most widely used approximate nearest neighbour index: a layered graph that finds near neighbours in roughly logarithmic time, trading a little accuracy for a large speed gain.",
+    "relevant_doc_ids": ["vector_databases.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "vectordb-002",
+    "question": "When should I use Chroma and when Qdrant?",
+    "expected_answer": "Chroma runs embedded in the Python process with no separate server, so it suits local development, notebooks and tests; Qdrant runs as a separate service with rich metadata filtering, scaling and snapshots, so it suits production.",
+    "relevant_doc_ids": ["vector_databases.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "rerank-001",
+    "question": "What is the difference between a bi-encoder and a cross-encoder?",
+    "expected_answer": "A bi-encoder embeds the query and documents separately so document vectors can be precomputed, which is fast; a cross-encoder reads the query and one document together and scores their relevance, which is more accurate but must run per pair at query time.",
+    "relevant_doc_ids": ["reranking.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "rerank-002",
+    "question": "How do you combine fast vector search with a slower but more accurate relevance model?",
+    "expected_answer": "Retrieve a larger candidate set from the vector store, for example the top 20 or 50, then score each candidate with a cross-encoder and keep only the best few, for example the top 5.",
+    "relevant_doc_ids": ["reranking.md"],
+    "query_type": "paraphrase"
+  },
+  {
+    "id": "retrieval-001",
+    "question": "What does Mean Reciprocal Rank measure?",
+    "expected_answer": "How high the first relevant document appears in the ranked results: the mean over queries of 1 divided by the rank of the first relevant document, or 0 if none is retrieved.",
+    "relevant_doc_ids": ["retrieval_metrics.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "retrieval-002",
+    "question": "What is the difference between precision@k and recall@k?",
+    "expected_answer": "Precision@k is the share of retrieved documents in the top k that are relevant (how much noise reaches the prompt); recall@k is the share of all relevant documents found in the top k (whether the needed sources were found at all).",
+    "relevant_doc_ids": ["retrieval_metrics.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "retrieval-003",
+    "question": "Which metric rewards putting several relevant documents near the top of the list?",
+    "expected_answer": "NDCG@k, which sums relevance divided by log2(rank + 1) and normalises by the ideal ranking's score, so it falls between 0 and 1.",
+    "relevant_doc_ids": ["retrieval_metrics.md"],
+    "query_type": "paraphrase"
+  },
+  {
+    "id": "generation-001",
+    "question": "What is faithfulness in RAG evaluation?",
+    "expected_answer": "Whether every claim in the answer is supported by the retrieved context, usually scored as the share of the answer's claims that the context supports.",
+    "relevant_doc_ids": ["generation_metrics.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "generation-002",
+    "question": "Can an answer be correct but still score badly on groundedness?",
+    "expected_answer": "Yes. If the facts came from the model's memory rather than the retrieved context, the answer can be correct in the real world but unfaithful.",
+    "relevant_doc_ids": ["generation_metrics.md"],
+    "query_type": "paraphrase"
+  },
+  {
+    "id": "judge-001",
+    "question": "What biases does an LLM judge have?",
+    "expected_answer": "Self-preference bias (favouring its own or its family's outputs), position bias (preferring the first answer shown) and verbosity bias (favouring longer answers).",
+    "relevant_doc_ids": ["llm_as_judge.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "golden-001",
+    "question": "Why label relevance per document instead of per chunk?",
+    "expected_answer": "Document-level labels keep the golden dataset valid when the chunking strategy changes, because retrieved chunks are mapped back to their source document before scoring; the trade-off is that a chunk from the wrong section of the right document still counts as a hit.",
+    "relevant_doc_ids": ["golden_datasets.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "golden-002",
+    "question": "How many examples should a first evaluation set have?",
+    "expected_answer": "Start with 50 to 100 carefully reviewed examples; a small trustworthy set is more useful than a large noisy one.",
+    "relevant_doc_ids": ["golden_datasets.md"],
+    "query_type": "paraphrase"
+  },
+  {
+    "id": "gate-001",
+    "question": "How does an evaluation gate block a regression from merging?",
+    "expected_answer": "On every pull request it builds the index, runs every golden question through the pipeline, computes the metrics, compares each average with its minimum threshold and fails the check if any metric is below it, publishing the report as an artifact.",
+    "relevant_doc_ids": ["ci_evaluation_gates.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "observability-001",
+    "question": "What is knowledge-base drift?",
+    "expected_answer": "A decline in quality without any code change because documents were added, removed or went out of date; it is detected by watching retrieval scores over time.",
+    "relevant_doc_ids": ["production_observability.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "cost-001",
+    "question": "Why check the latency budget at p95 instead of the average?",
+    "expected_answer": "Because the average hides the slow requests users actually notice; the 95th percentile shows them, and the budget should be tested under realistic concurrent load.",
+    "relevant_doc_ids": ["cost_and_latency.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "security-001",
+    "question": "How do you stop an HR assistant from showing one employee's salary to another?",
+    "expected_answer": "Enforce access control inside the vector search with metadata filters on the user's permissions, so restricted chunks are never retrieved, rather than filtering after retrieval.",
+    "relevant_doc_ids": ["security_governance.md"],
+    "query_type": "paraphrase"
+  },
+  {
+    "id": "citations-001",
+    "question": "How are citations added to a RAG answer?",
+    "expected_answer": "Retrieved chunks are placed in the prompt as numbered blocks labelled with their source, the model cites the supporting block after each claim as [n], and the application maps each marker back to its source chunk.",
+    "relevant_doc_ids": ["prompting_with_citations.md"],
+    "query_type": "short"
+  },
+  {
+    "id": "multihop-001",
+    "question": "Why is metadata filtering during vector search important for security?",
+    "expected_answer": "Filtering during the search guarantees every result satisfies the user's permissions, so restricted chunks are never retrieved; filtering after retrieval can expose restricted content if the step is skipped and can return fewer than top-k results.",
+    "relevant_doc_ids": ["vector_databases.md", "security_governance.md"],
+    "query_type": "multi_hop"
+  },
+  {
+    "id": "multihop-002",
+    "question": "Which retrieval metrics does re-ranking mainly improve, and what do they measure?",
+    "expected_answer": "Mainly MRR and NDCG, the ranking-sensitive metrics: MRR measures how high the first relevant document appears, and NDCG rewards relevant documents near the top of the list.",
+    "relevant_doc_ids": ["reranking.md", "retrieval_metrics.md"],
+    "query_type": "multi_hop"
+  },
+  {
+    "id": "multihop-003",
+    "question": "Why do generation metrics need a tolerance in the CI gate?",
+    "expected_answer": "They are scored by an LLM judge, which is itself a model whose scores vary slightly between runs and cost money, so the gate scores a fixed sample with a pinned judge and allows a small tolerance.",
+    "relevant_doc_ids": ["ci_evaluation_gates.md", "llm_as_judge.md"],
+    "query_type": "multi_hop"
+  },
+  {
+    "id": "multihop-004",
+    "question": "How should confirmed production failures feed back into offline evaluation?",
+    "expected_answer": "Failures found through human review and user feedback are added to the golden dataset, which is kept in version control and grown over time so the next evaluation run covers them and the benchmark is not overfit.",
+    "relevant_doc_ids": ["production_observability.md", "golden_datasets.md"],
+    "query_type": "multi_hop"
+  },
+  {
+    "id": "multihop-005",
+    "question": "How does the number of retrieved chunks affect both answer cost and retrieval quality?",
+    "expected_answer": "A higher top-k raises recall but adds noise and prompt tokens, and generation cost grows with the number of chunks in the prompt; retrieving fewer but better chunks, often with re-ranking, lowers cost.",
+    "relevant_doc_ids": ["vector_databases.md", "cost_and_latency.md"],
+    "query_type": "multi_hop"
+  },
+  {
+    "id": "multihop-006",
+    "question": "What should a RAG system do when the retrieved context does not contain the answer, and how is a wrong answer then measured?",
+    "expected_answer": "The prompt should tell the model to say it does not know instead of guessing; an answer with unsupported claims counts against faithfulness and the hallucination rate.",
+    "relevant_doc_ids": ["prompting_with_citations.md", "generation_metrics.md"],
+    "query_type": "multi_hop"
+  }
+]
