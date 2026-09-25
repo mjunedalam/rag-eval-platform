@@ -13,3 +13,8 @@ dependencies = []
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rag_eval_platform"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

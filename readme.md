@@ -37,9 +37,18 @@ Python · LangChain / LangGraph · Chroma / Qdrant · OpenAI or Sentence Transfo
 
 Early stage: the implementation is in progress.
 
+## Getting started
+
+Requires [uv](https://docs.astral.sh/uv/). uv installs the pinned Python version (3.12) automatically.
+
 ```bash
 git clone git@github.com:mjunedalam/rag-eval-platform.git
+cd rag-eval-platform
+uv sync            # create .venv and install the project + dev dependencies
+uv run pytest      # run the test suite
 ```
+
+Add a dependency with `uv add <package>` (or `uv add --dev <package>` for dev tools); commit the updated `uv.lock`.
 
 ## Author
 
