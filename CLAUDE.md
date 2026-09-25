@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-Phase 0 (project setup) is done. `config/settings.py` and `config/logging_config.py` are implemented and tested, and `.github/workflows/ci.yml` runs lint, types, unit tests and a secret scan. The evaluation data and retrieval metrics are also in place. `data/raw/` holds a 14-document corpus on RAG and LLM evaluation; each document's filename is its doc id. `data/golden_dataset/qa_pairs.json` has 30 examples, and `evaluation/golden_dataset.py` and `evaluation/metrics.py` are implemented. A unit test fails if a golden example references a document that is missing from `data/raw/`, or if a corpus document has no golden question. So when you add, rename or remove a corpus document, update the golden dataset at the same time. Everything else is still a placeholder holding only a docstring or a `# TODO`: the other modules under `src/rag_eval_platform/`, the scripts, `evaluation_gate.yml` and the Docker files. The intended design is written up in `docs/architecture.md` and `docs/evaluation_methodology.md`. Treat those two documents as the spec when implementing a module. The tools for each phase, and whether each is in use, chosen or only proposed, are listed in the "Tooling by phase" table in `docs/architecture.md`. Add a dependency only when its phase starts, and ask before adding a *proposed* one.
+Phases 0 (setup) and 1 (ingestion) are done. `config/settings.py` and `config/logging_config.py` are implemented and tested, and `.github/workflows/ci.yml` runs lint, types, unit tests and a secret scan. The evaluation data and retrieval metrics are also in place. `data/raw/` holds a 14-document corpus on RAG and LLM evaluation; each document's filename is its doc id. `data/golden_dataset/qa_pairs.json` has 30 examples, and `evaluation/golden_dataset.py` and `evaluation/metrics.py` are implemented. A unit test fails if a golden example references a document that is missing from `data/raw/`, or if a corpus document has no golden question. So when you add, rename or remove a corpus document, update the golden dataset at the same time. Ingestion is implemented in `ingestion/`: `loaders`, `chunking`, `chunk_io`, `embedding` and `cli`, run through `scripts/run_ingestion.py`. Everything else is still a placeholder holding only a docstring or a `# TODO`: retrieval, generation, `evaluation/evaluator.py`, the observability and API modules, `scripts/run_evaluation.py`, `scripts/seed_vector_store.py`, `evaluation_gate.yml` and the Docker files. The intended design is written up in `docs/architecture.md` and `docs/evaluation_methodology.md`. Treat those two documents as the spec when implementing a module. The tools for each phase, and whether each is in use, chosen or only proposed, are listed in the "Tooling by phase" table in `docs/architecture.md`. Add a dependency only when its phase starts, and ask before adding a *proposed* one.
 
 ## Commands
 
@@ -12,10 +12,13 @@ The project uses [uv](https://docs.astral.sh/uv/), not pip. Python 3.12 is pinne
 
 ```bash
 uv sync                                                  # create .venv, install project + dev group
+uv sync --all-extras                                     # + optional embedding backends (torch, openai)
+uv run python scripts/run_ingestion.py                   # data/raw -> data/processed/chunks.jsonl
 uv run pytest                                            # all tests
 uv run pytest tests/unit/test_chunking.py                # one file
 uv run pytest tests/unit/test_chunking.py::test_name     # one test
 uv run pytest tests/unit                                 # one tier: unit | integration | evaluation
+uv run pytest -m integration                             # real-model tests (need --all-extras)
 uv run pytest --cov                                      # with coverage (branch, missing lines)
 uv run ruff check . && uv run ruff format --check .      # lint + format check (ruff format . to fix)
 uv run mypy src tests                                    # strict type check
@@ -38,7 +41,9 @@ No module wires the layers end to end yet. Design decisions that span several mo
 
 - **Pluggable backends through protocols.** Embedder, vector store, re-ranker and LLM client each sit behind an interface. Chroma is the local-dev store and Qdrant the production store. Business logic must not import a concrete backend directly.
 - **Citations.** `generation/prompt_templates` numbers the retrieved chunks, and the LLM cites them as `[n]`. `generator` maps those markers back to source chunks. Citation validity is itself an evaluation metric.
-- **Default chunking is recursive** (paragraph → line → word). Fixed-size with overlap is the alternative, and semantic chunking is planned.
+- **Default chunking is recursive** (paragraph → line → word), using LangChain's `RecursiveCharacterTextSplitter`. Fixed-size with overlap is the alternative. `semantic` raises `NotImplementedError` for now. Sizes are in characters.
+- **Ids flow end to end.** A `Document.id` is the file's path relative to the corpus root, e.g. `physics/02_newtons_laws.pdf`. A `Chunk.id` is `<doc_id>#<index>`, and each chunk keeps its `doc_id` so retrieval results can be scored at document level. PDFs record `page_starts`, so every chunk knows its 1-based `page` for citations. A PDF with no text layer (a scan) raises an error with an OCR hint.
+- **Optional embedding backends.** `sentence-transformers` (with CPU-only torch on Linux) and `openai` are extras, not core dependencies, so CI never installs torch. `embedding.py` imports them lazily, and tests use fakes that satisfy the `Embedder` protocol. Tests that load a real model are marked `integration` and skip when the extra is missing. mypy skips these packages so local and CI results match.
 - **Configuration.** Settings are typed and read from env / `.env` in `config/settings.py`. Chunk params, top-k, backends, model names and **evaluation thresholds** all live in config, never in code.
 - **Access control and PII.** Permissions are applied as metadata filters *inside* the vector search, not after retrieval. PII is masked at ingestion, before embedding.
 

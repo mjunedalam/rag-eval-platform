@@ -40,7 +40,7 @@
 
 | Layer | Module | Responsibility |
 |---|---|---|
-| Ingestion | `ingestion/loaders.py` | Read raw documents (Markdown, text) into `Document` objects with a stable id. |
+| Ingestion | `ingestion/loaders.py` | Read raw documents (Markdown, text, PDF) into `Document` objects with a stable id (path relative to the corpus). |
 | | `ingestion/chunking.py` | Split documents into chunks: fixed-size with overlap, recursive (paragraph → line → word), semantic (planned). |
 | | `ingestion/embedding.py` | Turn chunks and queries into vectors (Sentence Transformers or OpenAI). |
 | Retrieval | `retrieval/vector_store.py` | Store and search vectors behind one interface; Chroma for local dev, Qdrant for production. |
@@ -100,9 +100,10 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | Ruff | Lint and format | in use |
 | | mypy | Static type checking of the protocol interfaces | in use |
 | | pydantic-settings | Typed settings from env / `.env` in `config/settings.py` | in use |
-| **1. Ingestion** | LangChain (document loaders, `langchain-text-splitters`) | Load Markdown/text; fixed-size and recursive chunking | chosen |
-| | Sentence Transformers | Local, free embedding model (default for dev and CI) | chosen |
-| | OpenAI Embeddings | Hosted embedding alternative | chosen |
+| **1. Ingestion** | `langchain-text-splitters` | Recursive chunking (fixed-size is our own sliding window) | in use |
+| | pypdf | Extract text and page offsets from PDFs; Markdown/text are read directly | in use |
+| | Sentence Transformers | Local, free embedding model (default); optional extra `local-embeddings` | in use |
+| | OpenAI Embeddings | Hosted embedding alternative; optional extra `openai` | in use |
 | | tiktoken | Token counts for chunk sizing and cost estimates | proposed |
 | **2. Retrieval** | Chroma | Local / dev vector store, no external infra | chosen |
 | | Qdrant | Production vector store with metadata filtering | chosen |

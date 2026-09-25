@@ -10,11 +10,31 @@ readme = "readme.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
+    "langchain-text-splitters>=1.1.2",
     "pydantic-settings>=2.15.0",
+    "pypdf>=6.19.0",
+]
+
+[project.optional-dependencies]
+local-embeddings = [
+    "sentence-transformers>=6.1.0",
+    "torch>=2.14.0",
+]
+openai = [
+    "openai>=3.19.2",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/rag_eval_platform"]
+
+# Linux (CI, Docker) gets CPU-only PyTorch; the default CUDA wheels are several GB.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [dependency-groups]
 dev = [
@@ -36,14 +56,22 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "S", "PT"]
 "tests/**" = ["S101"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 mypy_path = "src"
 packages = ["rag_eval_platform"]
 strict = true
 plugins = ["pydantic.mypy"]
 
+# Optional embedding backends are not installed in CI; skip them locally too so both
+# environments type-check the same code. Our code talks to them through Protocols.
+[[tool.mypy.overrides]]
+module = ["sentence_transformers", "sentence_transformers.*", "openai", "openai.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-ra --strict-markers"
 markers = [
     "integration: tests that need external services (vector store, network)",
