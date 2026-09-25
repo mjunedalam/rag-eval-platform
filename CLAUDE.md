@@ -1,0 +1,53 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project status
+
+This is an early-stage scaffold. Every module under `src/rag_eval_platform/`, every test file, every script in `scripts/`, the CI workflows, and the Docker files are still placeholders: each holds only a docstring or a `# TODO`. `data/golden_dataset/qa_pairs.json` is an empty list and `pyproject.toml` has no runtime dependencies yet. The intended design is written up in `docs/architecture.md` and `docs/evaluation_methodology.md`. Treat those two documents as the spec when implementing a module.
+
+## Commands
+
+The project uses [uv](https://docs.astral.sh/uv/), not pip. Python 3.12 is pinned in `.python-version`, and `requires-python` is `>=3.11`.
+
+```bash
+uv sync                                                  # create .venv, install project + dev group
+uv run pytest                                            # all tests
+uv run pytest tests/unit/test_chunking.py                # one file
+uv run pytest tests/unit/test_chunking.py::test_name     # one test
+uv run pytest tests/unit                                 # one tier: unit | integration | evaluation
+uv add <pkg>            # runtime dependency
+uv add --dev <pkg>      # dev tool
+```
+
+Commit `uv.lock` together with any `pyproject.toml` change. No linter or formatter is configured yet. While the test files are empty, `pytest` exits with code 5 (no tests collected).
+
+Secrets such as `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` come from `.env` (copy it from `.env.example`). `.env` is git-ignored.
+
+## Architecture
+
+The code uses a `src/` layout with the package at `src/rag_eval_platform/` (built with hatchling). It has two flows:
+
+- **Offline ingestion** (`scripts/run_ingestion.py` → `scripts/seed_vector_store.py`): `ingestion/loaders` → `ingestion/chunking` → `ingestion/embedding` → `retrieval/vector_store`. Raw docs go in `data/raw/` and chunked output goes in `data/processed/`.
+- **Online query** (FastAPI in `api/`, with `GET /health` and `POST /query`): embed the query with the *same* model used at ingestion → `retrieval/retriever` (top-k, with optional `retrieval/reranker` cross-encoder) → `generation/generator` → log through `observability/logger`.
+
+No module wires the layers end to end yet. Design decisions that span several modules:
+
+- **Pluggable backends through protocols.** Embedder, vector store, re-ranker and LLM client each sit behind an interface. Chroma is the local-dev store and Qdrant the production store. Business logic must not import a concrete backend directly.
+- **Citations.** `generation/prompt_templates` numbers the retrieved chunks, and the LLM cites them as `[n]`. `generator` maps those markers back to source chunks. Citation validity is itself an evaluation metric.
+- **Default chunking is recursive** (paragraph → line → word). Fixed-size with overlap is the alternative, and semantic chunking is planned.
+- **Configuration.** Settings are typed and read from env / `.env` in `config/settings.py`. Chunk params, top-k, backends, model names and **evaluation thresholds** all live in config, never in code.
+- **Access control and PII.** Permissions are applied as metadata filters *inside* the vector search, not after retrieval. PII is masked at ingestion, before embedding.
+
+## Evaluation (the core of the project)
+
+- **Golden dataset** (`data/golden_dataset/qa_pairs.json`, loaded and validated by `evaluation/golden_dataset.py`). Each item has these fields: `id`, `question`, `expected_answer`, `relevant_doc_ids`, `query_type`. Relevance is judged at the **document** level so the dataset stays valid when chunking changes. Before scoring, retrieved chunks are mapped to their doc id and de-duplicated in rank order.
+- **Retrieval metrics** (`evaluation/metrics.py`): Precision@k, Recall@k, MRR, NDCG@k. They are deterministic, averaged, and also reported per `query_type`.
+- **Generation metrics**: RAGAS (primary) and DeepEval (pytest-style), scored by a pinned LLM judge that is a different or stronger model than the one being evaluated. Changing the judge model or prompt means re-baselining.
+- **Gate** (`evaluation/evaluator.py`, `scripts/run_evaluation.py`, `.github/workflows/evaluation_gate.yml`): fails the PR when any average is below its threshold. Starting thresholds are Recall@k 0.80, MRR 0.70, NDCG@k 0.70, Faithfulness 0.85, and Answer relevance 0.80. `ci.yml` is kept separate and covers lint plus unit tests.
+- Retrieval or prompt changes (chunk size, strategy, top-k, embedding model, re-ranking, prompt wording) need a before/after metrics table in the PR.
+
+## Conventions
+
+- Commit messages use the conventional format `<type>: <description>`. Types: feat, fix, refactor, docs, test, chore, perf, ci, build.
+- The README file is lowercase `readme.md`, and `pyproject.toml` refers to it by that name.
