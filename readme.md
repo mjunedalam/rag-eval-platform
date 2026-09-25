@@ -2,8 +2,6 @@
 
 An end-to-end Retrieval-Augmented Generation (RAG) pipeline where **evaluation is a first-class part of the system**, not an afterthought. Every change to prompts, chunking, embeddings, or retriever config is scored against a golden dataset and gated in CI/CD before it can merge.
 
-> Full design notes: [RAG Pipeline Evaluation – Enterprise Guide](docs/RAG%20Pipeline%20Evaluation%20-%20Enterprise%20Guide.md)
-
 ## Three layers of evaluation
 
 | Layer | Question it answers | Metrics |
@@ -37,7 +35,7 @@ Python · LangChain / LangGraph · Chroma / Qdrant · OpenAI or Sentence Transfo
 
 ## Status
 
-Early stage: design docs are in [`docs/`](docs/), and the implementation is in progress.
+Early stage: the implementation is in progress.
 
 ```bash
 git clone git@github.com:mjunedalam/rag-eval-platform.git
