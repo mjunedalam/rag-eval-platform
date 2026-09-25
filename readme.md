@@ -48,7 +48,12 @@ git clone git@github.com:mjunedalam/rag-eval-platform.git
 cd rag-eval-platform
 uv sync            # create .venv and install the project + dev dependencies
 uv run pytest      # run the test suite
+
+uv sync --extra local-embeddings          # optional: local embedding model (PyTorch)
+uv run python scripts/run_ingestion.py    # chunk data/raw into data/processed/chunks.jsonl
 ```
+
+Put your own documents (`.md`, `.txt`, or text-based `.pdf`) in `data/raw/`, one file per chapter or topic works best. Scanned PDFs need OCR first.
 
 Add a dependency with `uv add <package>` (or `uv add --dev <package>` for dev tools); commit the updated `uv.lock`.
 
