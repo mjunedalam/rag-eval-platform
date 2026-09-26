@@ -105,9 +105,9 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | Sentence Transformers | Local, free embedding model (default); optional extra `local-embeddings` | in use |
 | | OpenAI Embeddings | Hosted embedding alternative; optional extra `openai` | in use |
 | | tiktoken | Token counts for chunk sizing and cost estimates | proposed |
-| **2. Retrieval** | Chroma | Local / dev vector store, no external infra | chosen |
+| **2. Retrieval** | Chroma (server in Docker, `chromadb-client`) | Dev vector store over HTTP; also a CI service container | in use |
 | | Qdrant | Production vector store with metadata filtering | chosen |
-| | Sentence Transformers `CrossEncoder` | Optional re-ranker (e.g. an MS MARCO MiniLM cross-encoder) | proposed |
+| | Sentence Transformers `CrossEncoder` | Optional re-ranker (`RAG_RERANK=true`, MS MARCO MiniLM) | in use |
 | | NumPy | Vector math, similarity checks in tests | chosen |
 | **3. Generation** | Anthropic / OpenAI SDKs (via LangChain chat models) | LLM answer generation with `[n]` citations | chosen |
 | | LangGraph | Control flow beyond a linear chain (retry, confidence branching); add only when needed | chosen, deferred |
@@ -122,7 +122,9 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | **6. API and deployment** | FastAPI | `GET /health`, `POST /query` | chosen |
 | | Uvicorn | ASGI server for the API | proposed |
 | | httpx | FastAPI `TestClient` for integration tests | proposed |
-| | Docker / Docker Compose | API image; API + Qdrant local stack | chosen |
+| | Docker / Docker Compose | Local infrastructure (Chroma now); API image later | in use |
+| | chromadb-admin (community image, `ui` profile) | Browse Chroma collections and chunks in a web UI | in use |
+| | JupyterLab + pandas (`notebook` group) | `notebooks/exploration.ipynb`: inspect chunks, ask questions, run experiments | in use |
 | **7. Observability** | Python `logging` (JSON lines) | Query, latency, cost and eval-run logs | chosen |
 | | Streamlit | Dashboard: scores over time, recent queries, latency | chosen |
 | | TruLens | Continuous quality tracking with feedback functions | chosen, optional |
@@ -131,7 +133,7 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 
 ## Deployment
 
-- `docker/Dockerfile` builds the API image; `docker/docker-compose.yml` runs the API alongside a Qdrant instance.
+- `docker/docker-compose.yml` runs the local infrastructure: Chroma on `localhost:8001`, with data in a named volume. `docker/Dockerfile` (planned) will build the API image, and the API will be added to the same compose file.
 - The API is stateless; all state lives in the vector store and the observability log.
 
 ## Security and governance

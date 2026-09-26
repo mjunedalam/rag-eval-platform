@@ -65,3 +65,10 @@ def test_configure_logging_sets_level_and_single_handler() -> None:
 def test_configure_logging_rejects_unknown_level() -> None:
     with pytest.raises(ValueError, match="log level"):
         configure_logging("LOUD")
+
+
+def test_configure_logging_quiets_noisy_third_party_loggers() -> None:
+    configure_logging("DEBUG")
+
+    for name in ("httpx", "httpcore", "huggingface_hub", "sentence_transformers"):
+        assert logging.getLogger(name).level == logging.WARNING

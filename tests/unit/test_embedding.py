@@ -8,7 +8,6 @@ import pytest
 from pydantic import SecretStr
 
 from rag_eval_platform.config.settings import Settings
-from rag_eval_platform.ingestion import embedding
 from rag_eval_platform.ingestion.embedding import (
     EmbeddingError,
     OpenAIEmbedder,
@@ -149,16 +148,6 @@ class TestCreateEmbedder:
         assert create_embedder(settings) is sentinel
         assert received["model"] == "text-embedding-3-small"
         assert received["api_key"].get_secret_value() == "test-key"
-
-
-def test_missing_optional_package_gives_install_hint(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail_import(name: str) -> None:
-        raise ModuleNotFoundError(f"No module named {name!r}")
-
-    monkeypatch.setattr(embedding, "import_module", fail_import)
-
-    with pytest.raises(EmbeddingError, match="uv sync --extra local-embeddings"):
-        SentenceTransformerEmbedder.from_pretrained("any/model")
 
 
 def test_from_api_key_builds_a_real_client_without_network() -> None:

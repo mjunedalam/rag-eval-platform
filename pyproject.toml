@@ -10,6 +10,7 @@ readme = "readme.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
+    "chromadb-client==1.5.9",
     "langchain-text-splitters>=1.1.2",
     "pydantic-settings>=2.15.0",
     "pypdf>=6.19.0",
@@ -42,6 +43,11 @@ dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.9",
+]
+notebook = [
+    "ipykernel>=7.3.0",
+    "jupyterlab>=4.6.4",
+    "pandas>=3.0.6",
 ]
 
 [tool.ruff]

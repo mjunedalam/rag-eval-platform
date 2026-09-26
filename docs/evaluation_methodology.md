@@ -101,6 +101,19 @@ Thresholds live in configuration, not in code. Raising a threshold is a delibera
 - Retrieval metrics are deterministic and run on every pull request.
 - Generation metrics call an LLM, so they cost money and vary slightly between runs. Run them on a fixed sample with a pinned judge, and allow a small tolerance.
 
+### Baseline (2026-09-26)
+
+Recursive chunking (800 chars, 100 overlap) gives 40 chunks from the 14-document corpus. Embeddings use `all-MiniLM-L6-v2`, the store is Chroma, top-k is 5, and there is no re-ranking.
+
+| Slice | n | Recall@5 | MRR | NDCG@5 |
+|---|---|---|---|---|
+| **Overall** | 30 | **0.933** | **0.878** | **0.876** |
+| short | 16 | 1.000 | 0.896 | 0.923 |
+| paraphrase | 8 | 1.000 | 0.938 | 0.954 |
+| multi_hop | 6 | 0.667 | 0.750 | 0.646 |
+
+All three thresholds pass. Multi-hop questions are the weak slice: the three misses each found one of their two source documents but not the other. Precision@5 is 0.327, which is expected here: most questions have one relevant document, so at most one of up to five distinct documents can be relevant. Future experiments (re-ranking, chunk size, embedding model) are compared against this table.
+
 ## 5. Production observability
 
 | Practice | How |
