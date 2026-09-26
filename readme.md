@@ -49,9 +49,28 @@ cd rag-eval-platform
 uv sync            # create .venv and install the project + dev dependencies
 uv run pytest      # run the test suite
 
-uv sync --extra local-embeddings          # optional: local embedding model (PyTorch)
-uv run python scripts/run_ingestion.py    # chunk data/raw into data/processed/chunks.jsonl
 ```
+
+### Run the retrieval pipeline and its evaluation
+
+Needs [Docker](https://docs.docker.com/get-docker/) for the vector database.
+
+```bash
+uv sync --all-extras                                # + local embedding model and re-ranker (PyTorch)
+docker compose -f docker/docker-compose.yml up -d   # start Chroma on localhost:8001
+uv run python scripts/run_ingestion.py              # data/raw -> data/processed/chunks.jsonl
+uv run python scripts/seed_vector_store.py          # embed the chunks into Chroma
+uv run python scripts/run_evaluation.py             # score retrieval on the golden dataset
+```
+
+### Look inside the vector store
+
+```bash
+docker compose -f docker/docker-compose.yml --profile ui up -d   # web UI: http://localhost:3001
+uv sync --all-extras --group notebook && uv run --group notebook jupyter lab
+```
+
+In the web UI ([chromadb-admin](https://github.com/flanker/chromadb-admin)), connect to `http://chroma:8000` to browse chunks and metadata. The notebook `notebooks/exploration.ipynb` asks questions, shows scores and misses, and compares retrieval with and without re-ranking.
 
 Put your own documents (`.md`, `.txt`, or text-based `.pdf`) in `data/raw/`, one file per chapter or topic works best. Scanned PDFs need OCR first.
 
