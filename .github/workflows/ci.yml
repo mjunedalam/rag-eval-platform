@@ -38,6 +38,40 @@ jobs:
       - name: Unit tests
         run: uv run pytest tests/unit --cov --cov-report=term-missing
 
+  integration:
+    name: Integration tests (Chroma in Docker)
+    runs-on: ubuntu-latest
+    services:
+      chroma:
+        # Same image and version as docker/docker-compose.yml
+        image: chromadb/chroma:1.5.9
+        ports:
+          - 8001:8000
+    env:
+      RAG_CHROMA_HOST: localhost
+      RAG_CHROMA_PORT: "8001"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Wait for Chroma
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8001/api/v2/heartbeat && exit 0
+            sleep 2
+          done
+          echo "Chroma did not become ready" && exit 1
+
+      - name: Integration tests
+        # Model-based tests skip here (no local-embeddings extra); Chroma tests run.
+        run: uv run pytest -m integration -rs
+
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest
