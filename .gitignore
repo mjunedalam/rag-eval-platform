@@ -21,3 +21,6 @@ data/processed/*
 
 # Evaluation reports (regenerate with scripts/run_evaluation.py)
 reports/
+
+# Jupyter autosaves
+.ipynb_checkpoints/
