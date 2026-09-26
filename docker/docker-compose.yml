@@ -1,1 +1,39 @@
-# TODO: api + vector store services
+# Local infrastructure for development. Start with:
+#   docker compose -f docker/docker-compose.yml up -d
+# Stop with `down` (data is kept in the named volume); `down -v` also deletes the data.
+name: rag-eval-platform
+
+services:
+  chroma:
+    # Pinned to the same version as the chromadb-client Python package.
+    image: chromadb/chroma:1.5.9
+    ports:
+      # Host port 8001, so 8000 stays free for the FastAPI app.
+      - "127.0.0.1:${CHROMA_HOST_PORT:-8001}:8000"
+    volumes:
+      - chroma-data:/data
+    environment:
+      ANONYMIZED_TELEMETRY: "FALSE"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8000 && printf \"GET /api/v2/heartbeat HTTP/1.0\\r\\n\\r\\n\" >&3 && grep -q \"200 OK\" <&3'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  chroma-admin:
+    # Optional web UI for browsing Chroma (community project: github.com/flanker/chromadb-admin).
+    # Start with: docker compose -f docker/docker-compose.yml --profile ui up -d
+    # Open http://localhost:3001 and connect to http://chroma:8000
+    # (tenant default_tenant, database default_database).
+    image: fengzhichao/chromadb-admin:0.0.2
+    profiles: ["ui"]
+    ports:
+      - "127.0.0.1:${CHROMA_ADMIN_HOST_PORT:-3001}:3001"
+    depends_on:
+      chroma:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  chroma-data:
