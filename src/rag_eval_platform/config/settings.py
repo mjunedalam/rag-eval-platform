@@ -46,7 +46,9 @@ class Settings(BaseSettings):
     # Vector store
     vector_store: VectorStoreBackend = "chroma"
     collection_name: str = "rag_documents"
-    chroma_path: Path = Path(".chroma")
+    # Chroma runs as a server (docker/docker-compose.yml); 8001 keeps 8000 free for the API.
+    chroma_host: str = "localhost"
+    chroma_port: int = Field(default=8001, gt=0, le=65535)
     qdrant_url: str = "http://localhost:6333"
 
     # Retrieval

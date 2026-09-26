@@ -35,6 +35,7 @@ def test_defaults_load_without_any_environment() -> None:
     assert settings.chunk_size == 800
     assert settings.chunk_overlap == 100
     assert settings.vector_store == "chroma"
+    assert (settings.chroma_host, settings.chroma_port) == ("localhost", 8001)
     assert settings.top_k == 5
     assert settings.rerank is False
     assert settings.golden_dataset_path == Path("data/golden_dataset/qa_pairs.json")
