@@ -16,6 +16,9 @@ _RESERVED_ATTRS = frozenset(
     | {"message", "asctime", "taskName"}
 )
 
+# Libraries that log every HTTP request or model-file lookup at INFO; ours stay readable.
+NOISY_LOGGERS = ("httpx", "httpcore", "huggingface_hub", "sentence_transformers", "chromadb")
+
 
 class JsonFormatter(logging.Formatter):
     """Format a log record as a single-line JSON object."""
@@ -47,3 +50,5 @@ def configure_logging(level: str = "INFO") -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(numeric_level)
+    for name in NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(max(numeric_level, logging.WARNING))
