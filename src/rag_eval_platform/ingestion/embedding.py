@@ -11,11 +11,11 @@ re-embedding the whole corpus.
 """
 
 from collections.abc import Sequence
-from importlib import import_module
 from typing import Any, Protocol, Self
 
 from pydantic import SecretStr
 
+from rag_eval_platform._optional import import_optional
 from rag_eval_platform.config.settings import Settings
 
 DEFAULT_LOCAL_BATCH_SIZE = 32
@@ -61,7 +61,7 @@ class SentenceTransformerEmbedder:
     @classmethod
     def from_pretrained(cls, model_name: str) -> Self:
         """Load a model by name (downloaded from Hugging Face on first use, then cached)."""
-        module = _import_optional("sentence_transformers", extra="local-embeddings")
+        module = import_optional("sentence_transformers", extra="local-embeddings")
         return cls(module.SentenceTransformer(model_name))
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
@@ -115,7 +115,7 @@ class OpenAIEmbedder:
     def from_api_key(cls, api_key: SecretStr | None, model: str) -> Self:
         if api_key is None:
             raise EmbeddingError("OPENAI_API_KEY is not set (add it to .env)")
-        module = _import_optional("openai", extra="openai")
+        module = import_optional("openai", extra="openai")
         return cls(module.OpenAI(api_key=api_key.get_secret_value()), model)
 
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
@@ -135,12 +135,3 @@ def create_embedder(settings: Settings) -> Embedder:
     if settings.embedding_provider == "openai":
         return OpenAIEmbedder.from_api_key(settings.openai_api_key, settings.embedding_model)
     return SentenceTransformerEmbedder.from_pretrained(settings.embedding_model)
-
-
-def _import_optional(module_name: str, extra: str) -> Any:
-    try:
-        return import_module(module_name)
-    except ModuleNotFoundError as exc:
-        raise EmbeddingError(
-            f"The '{module_name}' package is not installed. Run: uv sync --extra {extra}"
-        ) from exc
