@@ -189,7 +189,7 @@ flowchart LR
     SPLIT --> P1["pair 1: sentence A ↔ card 1"]
     SPLIT --> P2["pair 2: sentence B ↔ card 2"]
     SPLIT --> P3["pair 3: sentence B ↔ card 3"]
-    P1 & P2 & P3 --> ONE["🧑‍⚖️ ONE judge request<br/>reply: {&quot;verdicts&quot;: [yes, yes, no]}"]
+    P1 & P2 & P3 --> ONE["🧑‍⚖️ ONE judge request<br/>reply: verdicts = yes, yes, no"]
     ONE --> SC(["citation validity = 2/3"])
 ```
 
