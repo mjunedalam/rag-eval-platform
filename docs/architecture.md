@@ -113,8 +113,9 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | `openai` SDK (OpenAI-compatible chat API) | One client for Ollama and OpenAI; answers with `[n]` citations | in use |
 | | Anthropic SDK | Claude as an optional hosted provider | chosen, deferred |
 | | LangGraph | Control flow beyond a linear chain (retry, confidence branching); add only when needed | chosen, deferred |
-| **4. Evaluation** | RAGAS | Primary generation metrics: faithfulness, answer relevance, context precision/recall | chosen |
-| | DeepEval | Pytest-style LLM evaluation tests | chosen |
+| **4. Evaluation** | RAGAS (optional extra `evaluation`) | Primary generation metrics: faithfulness, answer relevance, context precision/recall | in use |
+| | DeepEval (optional extra `evaluation`) | Pytest-style LLM evaluation tests (`pytest -m evaluation`), judge via `LocalModel` on Ollama | in use |
+| | Ollama + `gemma3:12b` (local judge) | LLM-as-a-judge: a different, larger model than the generator; also checks `[n]` citation validity | in use |
 | | Custom `evaluation/metrics.py` + `evaluator.py` | Deterministic retrieval metrics (Precision@k, Recall@k, MRR, NDCG@k) and threshold checks | in use |
 | | Pandas | Score tables in the notebook; reports and per-`query_type` breakdowns | in use |
 | **5. CI/CD gate** | GitHub Actions | `ci.yml` (lint, types, unit tests, secret scan) in use; `evaluation_gate.yml` (block merge on regression) chosen | in use |

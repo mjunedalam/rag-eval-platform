@@ -61,8 +61,8 @@ Most RAG demos stop at "it answered". In production the hard questions are diffe
 | 1 · Ingestion | Markdown / text / **PDF** loaders, recursive and fixed-size chunking, embeddings | ✅ Done |
 | 2 · Retrieval | Chroma in Docker, retriever, cross-encoder re-ranking, **retrieval evaluation against thresholds** | ✅ Done |
 | 3 · Generation | Local LLM via Ollama, cited answers, refusal, end-to-end pipeline, **Streamlit playground** | ✅ Done |
-| 4 · Generation evaluation | RAGAS / DeepEval, LLM-as-a-judge, faithfulness and citation validity | 🔜 Next |
-| 5 · CI/CD evaluation gate | Block merges when golden-set scores regress | Planned |
+| 4 · Generation evaluation | RAGAS / DeepEval, local LLM judge (`gemma3:12b`), faithfulness, answer relevance, citation validity | ✅ Done |
+| 5 · CI/CD evaluation gate | Block merges when golden-set scores regress | 🔜 Next |
 | 6 · API and deployment | FastAPI (`/health`, `/query`), Docker image | Planned |
 | 7 · Observability | Dashboard of scores, latency and cost over time | Planned |
 | 8 · Security and governance | PII masking, retrieval-time access control, audit logging | Planned |
@@ -75,10 +75,10 @@ timeline
         1 · Ingestion : md / txt / PDF loaders : chunking, embeddings
         2 · Retrieval : Chroma in Docker, re-ranking : retrieval evaluation
         3 · Generation : Ollama qwen3 8b, cited answers : pipeline, ask CLI, playground
+        4 · Generation evaluation : RAGAS, DeepEval : gemma3 12b judge, citation validity
     section 🔜 Next
-        4 · Generation evaluation : RAGAS, DeepEval : LLM-as-a-judge
-    section Planned
         5 · CI gate : block regressions
+    section Planned
         6 · API + deployment : FastAPI, Docker image
         7 · Observability : scores, latency, cost dashboard
         8 · Security : PII masking, access control, audit
@@ -243,7 +243,7 @@ Details: [docs/architecture.md](docs/architecture.md) · [docs/evaluation_method
 | **Vector database** | Chroma 1.5 as a server in Docker (`chromadb-client`), cosine / HNSW | Qdrant (production) |
 | **Re-ranking** | Sentence Transformers cross-encoder `ms-marco-MiniLM-L-6-v2` | |
 | **LLM** | Ollama + `qwen3:8b` (local, open-source), OpenAI-compatible client (also works with OpenAI), streaming answers | Anthropic Claude (optional hosted) |
-| **Evaluation** | Golden dataset (JSON), custom retrieval metrics (Precision, Recall, MRR, NDCG), threshold checks | RAGAS, DeepEval, LLM-as-a-judge, TruLens |
+| **Evaluation** | Golden dataset (JSON), custom retrieval metrics (Precision, Recall, MRR, NDCG), RAGAS 0.4 and DeepEval with a local `gemma3:12b` judge, citation-validity judge, threshold checks | TruLens |
 | **UI & exploration** | Streamlit playground, JupyterLab notebook + pandas, chromadb-admin web UI | Streamlit observability dashboard |
 | **Quality** | Pytest (unit + integration), pytest-cov, Ruff (lint + format), mypy (strict) | |
 | **CI/CD** | GitHub Actions: lint, types, unit tests, integration tests against a Chroma service container, gitleaks secret scan | Evaluation gate workflow |
@@ -268,7 +268,7 @@ mindmap
     Evaluation
       Golden dataset
       Retrieval metrics
-      RAGAS · DeepEval planned
+      RAGAS · DeepEval · gemma3 judge
     UI
       Streamlit playground
       JupyterLab
@@ -359,7 +359,7 @@ The playground builds its own index from your uploads, so it only needs step 2.
 ```bash
 git clone https://github.com/mjunedalam/rag-eval-platform.git
 cd rag-eval-platform
-uv sync --all-extras --all-groups     # project + models + playground + notebook
+uv sync --all-extras --all-groups     # project + models + evaluation + playground + notebook
 cp .env.example .env                  # optional: override settings (never commit .env)
 ```
 
@@ -379,6 +379,15 @@ uv run python scripts/run_evaluation.py      # golden-set scores vs thresholds
 ```
 
 The first run downloads the embedding model from Hugging Face.
+
+**Judge the answers** (Phase 4). A second local model grades every answer; a full run takes about a minute per question:
+
+```bash
+ollama pull gemma3:12b                                            # the judge, ~8 GB
+uv run python scripts/run_generation_evaluation.py --limit 3      # quick check
+uv run python scripts/run_generation_evaluation.py                # all 30 questions
+uv run python scripts/run_generation_evaluation.py --full         # + context precision / recall
+```
 
 ### 4. Ask questions
 
@@ -411,10 +420,13 @@ flowchart LR
 
 ```bash
 docker compose -f docker/docker-compose.yml --profile ui up -d   # chromadb-admin: http://localhost:3001
-uv run --group notebook jupyter lab                              # notebooks/exploration.ipynb
+uv run --group notebook jupyter lab                              # notebooks/*.ipynb
 ```
 
-In chromadb-admin, connect to `http://chroma:8000` to browse chunks and metadata. The notebook asks questions, lists retrieval misses, and compares scores with and without re-ranking. In VS Code, select the project's `.venv` kernel.
+In chromadb-admin, connect to `http://chroma:8000` to browse chunks and metadata. Two notebooks (in VS Code, select the project's `.venv` kernel):
+
+- `notebooks/exploration.ipynb` asks questions, lists retrieval misses, and compares scores with and without re-ranking.
+- `notebooks/generation_evaluation.ipynb` walks through the Phase 4 report in 15 small steps with charts: scores vs pass marks, spread, per question type, faithfulness vs relevance, weakest answers, citations, retrieval vs generation, latency, a live judge demo, and before/after comparison of two runs.
 
 ### Stop everything
 
@@ -438,7 +450,9 @@ All settings have defaults and can be overridden with environment variables or `
 | `RAG_LLM_PROVIDER` / `RAG_LLM_MODEL` | `ollama` / `qwen3:8b` | LLM (`openai` also supported) |
 | `RAG_LLM_REASONING_EFFORT` | `none` | Hidden "thinking" for reasoning models (`none` is ~4× faster) |
 | `RAG_LLM_TEMPERATURE` | `0.0` | Randomness (0 = repeatable answers) |
-| `RAG_MIN_RECALL_AT_K` / `RAG_MIN_MRR` / `RAG_MIN_NDCG_AT_K` | `0.80` / `0.70` / `0.70` | Evaluation pass marks |
+| `RAG_JUDGE_PROVIDER` / `RAG_JUDGE_MODEL` | `ollama` / `gemma3:12b` | LLM judge for generation evaluation (must differ from the generator) |
+| `RAG_MIN_RECALL_AT_K` / `RAG_MIN_MRR` / `RAG_MIN_NDCG_AT_K` | `0.80` / `0.70` / `0.70` | Retrieval pass marks |
+| `RAG_MIN_FAITHFULNESS` / `RAG_MIN_ANSWER_RELEVANCE` | `0.85` / `0.80` | Generation pass marks |
 | `OPENAI_API_KEY` | — | Only needed for OpenAI embeddings or LLM |
 
 Example: `RAG_RERANK=true RAG_TOP_K=3 uv run python scripts/run_evaluation.py`
@@ -450,6 +464,7 @@ Example: `RAG_RERANK=true RAG_TOP_K=3 uv run python scripts/run_evaluation.py`
 ```bash
 uv run pytest tests/unit                        # fast, uses fakes: no Docker, models or Ollama needed
 uv run pytest -m integration                    # real Chroma, models and Ollama (skip if unavailable)
+uv run pytest -m evaluation                     # DeepEval checks with the real judge (slow; skipped otherwise)
 uv run pytest --cov                             # coverage
 uv run ruff check . && uv run ruff format --check .
 uv run mypy src tests                           # strict type checking
@@ -495,7 +510,7 @@ rag-eval-platform/
 │   ├── golden_dataset/  qa_pairs.json: 30 curated questions
 │   └── processed/       generated chunks (git-ignored)
 ├── tests/               unit/ (fakes) and integration/ (real services)
-├── notebooks/           exploration.ipynb
+├── notebooks/           exploration.ipynb, generation_evaluation.ipynb
 ├── docker/              docker-compose.yml (Chroma, chromadb-admin)
 ├── docs/                architecture, evaluation methodology, learning guides
 └── .github/workflows/   ci.yml, evaluation_gate.yml
@@ -511,6 +526,7 @@ rag-eval-platform/
 | [Evaluation methodology](docs/evaluation_methodology.md) | Golden dataset, metrics, thresholds, CI gate, baseline |
 | [Learning: Phase 2 — Retrieval](docs/learning/phase-2.md) | Docker, vector databases, similarity, re-ranking, evaluation — explained simply, with a code walkthrough |
 | [Learning: Phase 3 — Generation](docs/learning/phase-3.md) | LLMs, prompts, citations, refusal, local models — explained simply, with a code walkthrough |
+| [Learning: Phase 4 — Generation evaluation](docs/learning/phase-4.md) | LLM-as-a-judge, faithfulness, answer relevance, citation validity, RAGAS and DeepEval — explained simply, with a code walkthrough |
 | [Enterprise guide](<docs/RAG Pipeline Evaluation - Enterprise Guide.md>) | Background on RAG evaluation in enterprise settings |
 
 ---

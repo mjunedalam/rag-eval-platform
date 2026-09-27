@@ -74,6 +74,18 @@ Scored with RAGAS as the primary framework and DeepEval for pytest-style checks,
 - Pin the judge model and prompt version; changing either means re-establishing the baseline.
 - Spot-check a sample of judge verdicts by hand whenever the judge changes.
 
+**How it is implemented** (`evaluation/judge.py`, `citation_validity.py`, `generation_evaluator.py`)
+
+- The judge is `gemma3:12b` on Ollama (`RAG_JUDGE_MODEL`): a different model family from, and larger than, the `qwen3:8b` generator. Settings refuse a judge equal to the generator.
+- RAGAS 0.4 scores faithfulness and answer relevance on every run, and context precision and recall with `--full`. Answer relevance embeds with the project's own embedding model.
+- Citation validity is our own judge prompt (`CITATION_PROMPT_VERSION`): each sentence carrying `[n]` is paired with the text of source `n`, and the judge answers yes or no. All pairs of an answer go in one request.
+- Hallucination rate is the share of judged answers with faithfulness below 1, that is, with at least one claim the retrieved chunks do not support.
+- Refusals are not judged. Every golden question is answerable, so a refusal gets answer relevance 0 and no faithfulness score.
+- The run answers all questions first and judges them afterwards, so a laptop only holds one model in memory at a time. With a local judge a full run takes roughly a minute per question; `--limit N` scores the first N questions.
+- `pytest -m evaluation` runs DeepEval's faithfulness and answer-relevancy metrics on one golden question per query type, with the same judge and thresholds.
+
+Sanity check of the judge before trusting it: on a hand-made example, `gemma3:12b` scored a correct, cited answer 1.0 on both metrics, an invented answer 0.0 on faithfulness, and an off-topic answer 0.002 on answer relevance.
+
 ## 4. CI/CD evaluation gate
 
 `.github/workflows/evaluation_gate.yml` runs on every pull request:
