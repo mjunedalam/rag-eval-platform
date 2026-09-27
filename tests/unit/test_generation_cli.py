@@ -125,6 +125,18 @@ def test_below_threshold_returns_1_and_lists_unfaithful_answers(
     assert "q1: faithfulness 0.50" in stdout
 
 
+def test_zero_faithfulness_is_listed_not_mistaken_for_unscored(
+    fakes: Fakes, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fakes.judge.faithfulness = 0.0
+
+    run(tmp_path)
+
+    stdout = capsys.readouterr().out
+    assert "Answers with an unsupported claim: 2" in stdout
+    assert "q1: faithfulness 0.00" in stdout
+
+
 def test_limit_scores_only_the_first_questions(fakes: Fakes, tmp_path: Path) -> None:
     run(tmp_path, "--limit", "1")
 
