@@ -244,7 +244,7 @@ Details: [docs/architecture.md](docs/architecture.md) · [docs/evaluation_method
 | **Re-ranking** | Sentence Transformers cross-encoder `ms-marco-MiniLM-L-6-v2` | |
 | **LLM** | Ollama + `qwen3:8b` (local, open-source), OpenAI-compatible client (also works with OpenAI), streaming answers | Anthropic Claude (optional hosted) |
 | **Evaluation** | Golden dataset (JSON), custom retrieval metrics (Precision, Recall, MRR, NDCG), RAGAS 0.4 and DeepEval with a local `gemma3:12b` judge, citation-validity judge, threshold checks | TruLens |
-| **UI & exploration** | Streamlit playground, JupyterLab notebook + pandas, chromadb-admin web UI | Streamlit observability dashboard |
+| **UI & exploration** | Streamlit playground with Plotly charts and Graphviz diagrams, JupyterLab notebook + pandas + matplotlib, chromadb-admin web UI | Streamlit observability dashboard |
 | **Quality** | Pytest (unit + integration), pytest-cov, Ruff (lint + format), mypy (strict) | |
 | **CI/CD** | GitHub Actions: lint, types, unit tests, integration tests against a Chroma service container, gitleaks secret scan | Evaluation gate workflow |
 | **Infrastructure** | Docker Compose (Chroma, optional admin UI) | FastAPI + Uvicorn, API Docker image |
@@ -414,7 +414,24 @@ uv run python scripts/ask.py "What does MRR measure?"
 uv run streamlit run src/rag_eval_platform/playground/app.py    # http://localhost:8501
 ```
 
-Upload PDFs, Markdown or text files, adjust chunking, retrieval and generation settings in the sidebar, build the index, and ask in a chat: answers **stream in as the model writes them**. Each answer shows the retrieved chunks with scores, which were cited, the ranking before and after re-ranking, token counts, timings and the exact prompt sent to the model. Uploads stay local in `data/playground/` (git-ignored) and in their own Chroma collection, so the evaluation corpus is never affected.
+A visual learning tool: upload your own PDFs, Markdown or text, ask one question, and watch every RAG phase work on it. A Claude-style chat on the left (detailed, Markdown-formatted answers with headings, lists and tables, citation chips and a Sources line, collapsible steps, sources, copy, regenerate, judge and feedback) sits beside six tabs on the right, and the Overview updates live, side by side, while the answer streams; charts grow in when new data arrives, and a pipeline diagram on every tab highlights the phase you're looking at, with live numbers.
+
+| Tab | What you see |
+|---|---|
+| **Overview** | Runs your question **live** on one screen: the pipeline highlight moves phase by phase, stats tiles tick up (candidates, top similarity, first token, tokens, speed, cited, elapsed), charts grow in, and the answer streams with a status line and cursor. A 🐢 **Slow motion** switch in the sidebar slows it all down to watch each step |
+| **① Ingest** | Upload and index; files → pages → text → chunks; chunk-size histogram; where each chunk sits, with overlaps in red |
+| **② Embed** | The meaning map (2-D or rotatable 3-D) with your question among the chunks; the 384-number "meaning code"; the angle between question and top chunk |
+| **③ Retrieve** | Similarity bars with the top-k cut-off; the funnel from all chunks to cited ones; re-ranking as crossing lines |
+| **④ Generate** | The prompt as blocks; the answer with each `[n]` coloured like its source; invalid citations and refusals; where the time went |
+| **⑤ Evaluate** | "Judge this answer" (faithfulness, relevance, citation validity gauges and each citation's verdict), plus the golden-set reports |
+
+```mermaid
+flowchart LR
+    Q["❓ one question"] --> T1["① Ingest"] & T2["② Embed"] & T3["③ Retrieve"] & T4["④ Generate"] & T5["⑤ Evaluate"]
+    T1 & T2 & T3 & T4 & T5 --> OV["Overview<br/>all phases, one screen"]
+```
+
+Uploads stay local in `data/playground/` (git-ignored) and in their own Chroma collection, so the evaluation corpus is never affected.
 
 ```mermaid
 flowchart LR
@@ -422,7 +439,7 @@ flowchart LR
         RAW["data/raw/<br/>14 docs"] --> C1[("rag_documents")] --> GS["golden-set scores"]
     end
     subgraph play["Playground (private)"]
-        UP["your uploads"] --> DP["data/playground/<br/>git-ignored"] --> C2[("playground")] --> CHAT["chat + trace"]
+        UP["your uploads"] --> DP["data/playground/<br/>git-ignored"] --> C2[("playground")] --> CHAT["six visual tabs"]
     end
     C1 x--x C2
 ```
@@ -512,7 +529,7 @@ rag-eval-platform/
 │   ├── retrieval/       Chroma vector store, re-ranker, retriever, seeding
 │   ├── generation/      prompt templates, LLM client, citation mapping
 │   ├── evaluation/      golden dataset, retrieval metrics, evaluator
-│   ├── playground/      Streamlit app (core.py logic, app.py UI)
+│   ├── playground/      Streamlit app: core/visuals/query_visuals (logic), charts, tabs/ (UI)
 │   ├── pipeline.py      question -> retrieve -> generate -> answer
 │   └── ask.py           terminal command
 ├── scripts/             run_ingestion · seed_vector_store · run_evaluation · ask
@@ -538,6 +555,7 @@ rag-eval-platform/
 | [Learning: Phase 2 — Retrieval](docs/learning/phase-2.md) | Docker, vector databases, similarity, re-ranking, evaluation — explained simply, with a code walkthrough |
 | [Learning: Phase 3 — Generation](docs/learning/phase-3.md) | LLMs, prompts, citations, refusal, local models — explained simply, with a code walkthrough |
 | [Learning: Phase 4 — Generation evaluation](docs/learning/phase-4.md) | LLM-as-a-judge, faithfulness, answer relevance, citation validity, RAGAS and DeepEval — explained simply, with a code walkthrough |
+| [Learning: The visual playground](docs/learning/playground.md) | What each playground tab shows, what to try, and how it works underneath |
 | [Enterprise guide](<docs/RAG Pipeline Evaluation - Enterprise Guide.md>) | Background on RAG evaluation in enterprise settings |
 
 ---

@@ -17,7 +17,12 @@ from rag_eval_platform.generation.generator import (
     parse_citation_numbers,
     strip_thinking,
 )
-from rag_eval_platform.generation.prompt_templates import NO_ANSWER, PROMPT_VERSION, Message
+from rag_eval_platform.generation.prompt_templates import (
+    DETAILED_SYSTEM_PROMPT,
+    NO_ANSWER,
+    PROMPT_VERSION,
+    Message,
+)
 from rag_eval_platform.ingestion.chunking import Chunk
 from rag_eval_platform.retrieval.vector_store import SearchResult
 
@@ -104,6 +109,17 @@ class TestGenerator:
         assert answer.prompt_version == PROMPT_VERSION
         assert (answer.input_tokens, answer.output_tokens) == (120, 15)
         assert answer.latency_ms >= 0
+
+    def test_detailed_style_sends_its_prompt_and_records_its_version(self) -> None:
+        llm = FakeLlm("A [1].")
+
+        generate = Generator(llm, style="detailed").generate("q?", RESULTS)
+        streamed = Generator(llm, style="detailed").stream("q?", RESULTS)
+        "".join(streamed)
+
+        assert llm.received[0][0].content == DETAILED_SYSTEM_PROMPT
+        assert llm.received[1][0].content == DETAILED_SYSTEM_PROMPT
+        assert generate.prompt_version == streamed.answer.prompt_version == "v1-detailed"
 
     def test_sends_system_and_user_messages_with_numbered_sources(self) -> None:
         llm = FakeLlm("A [1].")

@@ -1,12 +1,14 @@
 """Tests for generation.prompt_templates."""
 
 from rag_eval_platform.generation.prompt_templates import (
+    DETAILED_SYSTEM_PROMPT,
     NO_ANSWER,
     PROMPT_VERSION,
     SYSTEM_PROMPT,
     Message,
     build_messages,
     format_context,
+    prompt_version,
 )
 from rag_eval_platform.ingestion.chunking import Chunk
 from rag_eval_platform.retrieval.vector_store import SearchResult
@@ -52,3 +54,21 @@ def test_system_prompt_demands_grounding_citations_and_refusal() -> None:
 
 def test_prompt_version_is_pinned() -> None:
     assert PROMPT_VERSION == "v1"
+
+
+def test_concise_style_is_the_default_and_unchanged() -> None:
+    assert build_messages("q?", RESULTS) == build_messages("q?", RESULTS, style="concise")
+    assert prompt_version("concise") == PROMPT_VERSION == "v1"
+
+
+def test_detailed_style_asks_for_structure_but_keeps_every_safety_rule() -> None:
+    system, user = build_messages("What is MRR?", RESULTS, style="detailed")
+
+    assert system == Message(role="system", content=DETAILED_SYSTEM_PROMPT)
+    assert user.content.endswith("Question: What is MRR?")
+    prompt = DETAILED_SYSTEM_PROMPT.lower()
+    for rule in ("only", "[1]", "instructions", "table", "heading", "bullet"):
+        assert rule in prompt
+    assert NO_ANSWER in DETAILED_SYSTEM_PROMPT
+    assert "concise" not in prompt
+    assert prompt_version("detailed") == "v1-detailed"

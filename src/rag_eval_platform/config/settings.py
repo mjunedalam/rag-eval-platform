@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434/v1"
     llm_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     llm_max_tokens: int = Field(default=1024, gt=0)
+    llm_detailed_max_tokens: int = Field(default=2048, gt=0)  # the playground's detailed style
     llm_timeout_seconds: float = Field(default=120.0, gt=0)
     # "none" turns off hidden reasoning in thinking models like qwen3: ~4x faster answers.
     llm_reasoning_effort: ReasoningEffort = "none"

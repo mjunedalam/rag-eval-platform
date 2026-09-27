@@ -27,7 +27,14 @@ def test_app_renders_without_errors() -> None:
 
     assert not app.exception
     assert app.title[0].value == "RAG Playground"
-    assert [t.label for t in app.tabs] == ["① Upload & index", "② Chunks", "③ Ask"]
+    assert [t.label for t in app.tabs] == [
+        "Overview",
+        "① Ingest",
+        "② Embed",
+        "③ Retrieve",
+        "④ Generate",
+        "⑤ Evaluate",
+    ]
 
 
 def test_uploaded_pdf_can_be_indexed_and_answered_with_page_citation(tmp_path: Path) -> None:

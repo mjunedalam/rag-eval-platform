@@ -22,14 +22,15 @@ from rag_eval_platform._optional import import_optional
 from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.generation.prompt_templates import (
     NO_ANSWER,
-    PROMPT_VERSION,
+    AnswerStyle,
     Message,
     build_messages,
+    prompt_version,
 )
 from rag_eval_platform.retrieval.vector_store import SearchResult
 
 # "[1]", "[1][3]" and "[1, 3]" all count; "[a]" or bare numbers do not.
-_CITATION_PATTERN = re.compile(r"\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]")
+CITATION_PATTERN = re.compile(r"\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]")
 # Reasoning models (e.g. qwen3) may wrap their private reasoning in <think> tags.
 _THINK_PATTERN = re.compile(r"<think>.*?</think>", re.DOTALL)
 _THINK_OPEN = "<think>"
@@ -85,7 +86,7 @@ class Answer:
 
 def parse_citation_numbers(text: str) -> tuple[int, ...]:
     """Citation numbers in order of first appearance, without repeats."""
-    numbers = (int(part) for group in _CITATION_PATTERN.findall(text) for part in group.split(","))
+    numbers = (int(part) for group in CITATION_PATTERN.findall(text) for part in group.split(","))
     return tuple(dict.fromkeys(numbers))
 
 
@@ -140,7 +141,7 @@ class AnswerStream:
 
         started = time.perf_counter()
         raw, shown, usage = "", "", None
-        messages = build_messages(self._question, self._sources)
+        messages = build_messages(self._question, self._sources, self._generator.style)
         for piece in self._generator.client.stream(messages):
             if piece.input_tokens is not None or piece.output_tokens is not None:
                 usage = piece
@@ -164,8 +165,13 @@ class AnswerStream:
 
 
 class Generator:
-    def __init__(self, client: LlmClient) -> None:
+    def __init__(self, client: LlmClient, style: AnswerStyle = "concise") -> None:
         self._client = client
+        self._style: AnswerStyle = style
+
+    @property
+    def style(self) -> AnswerStyle:
+        return self._style
 
     @property
     def client(self) -> LlmClient:
@@ -179,7 +185,7 @@ class Generator:
             return self.build_answer(question, NO_ANSWER, (), completion=None, latency_ms=0.0)
 
         started = time.perf_counter()
-        completion = self._client.complete(build_messages(question, results))
+        completion = self._client.complete(build_messages(question, results, self._style))
         latency_ms = (time.perf_counter() - started) * 1000
         return self.build_answer(
             question, strip_thinking(completion.text), tuple(results), completion, latency_ms
@@ -212,7 +218,7 @@ class Generator:
             invalid_citations=tuple(n for n in numbers if not 1 <= n <= len(sources)),
             sources=sources,
             model=self._client.model,
-            prompt_version=PROMPT_VERSION,
+            prompt_version=prompt_version(self._style),
             input_tokens=completion.input_tokens if completion else None,
             output_tokens=completion.output_tokens if completion else None,
             latency_ms=latency_ms,

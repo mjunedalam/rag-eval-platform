@@ -111,6 +111,33 @@ class ChromaVectorStore:
         collection = self._collection()
         return 0 if collection is None else collection.count()
 
+    def export(self) -> tuple[tuple[Chunk, ...], tuple[tuple[float, ...], ...]]:
+        """Every stored chunk and its vector, sorted by document and position.
+
+        For inspection tools (the playground's charts), not for retrieval.
+        """
+        collection = self._collection()
+        if collection is None:
+            return (), ()
+        batch_size = self._client.get_max_batch_size()
+        rows: list[tuple[Chunk, tuple[float, ...]]] = []
+        for offset in range(0, collection.count(), batch_size):
+            # Untyped like _to_results: a missing field (None) raises TypeError below.
+            page: Any = collection.get(
+                include=["documents", "metadatas", "embeddings"], limit=batch_size, offset=offset
+            )
+            try:
+                for chunk_id, document, metadata, embedding in zip(
+                    page["ids"], page["documents"], page["metadatas"], page["embeddings"],
+                    strict=True,
+                ):  # fmt: skip
+                    vector = tuple(float(x) for x in embedding)
+                    rows.append((_to_chunk(chunk_id, document, metadata), vector))
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                raise VectorStoreError(f"Unexpected response from Chroma: {exc}") from exc
+        rows.sort(key=lambda row: (row[0].doc_id, row[0].index))
+        return tuple(r[0] for r in rows), tuple(r[1] for r in rows)
+
     def _collection(self) -> Collection | None:
         try:
             return self._client.get_collection(self._collection_name)
@@ -138,6 +165,17 @@ def _to_metadata(chunk: Chunk) -> dict[str, str | int]:
     return metadata
 
 
+def _to_chunk(chunk_id: str, document: str, metadata: Any) -> Chunk:
+    return Chunk(
+        id=chunk_id,
+        doc_id=str(metadata["doc_id"]),
+        index=int(metadata["index"]),
+        text=document,
+        start_index=int(metadata["start_index"]),
+        page=int(metadata["page"]) if "page" in metadata else None,
+    )
+
+
 def _to_results(response: Any) -> list[SearchResult]:
     try:
         rows = zip(
@@ -148,17 +186,7 @@ def _to_results(response: Any) -> list[SearchResult]:
             strict=True,
         )
         return [
-            SearchResult(
-                chunk=Chunk(
-                    id=chunk_id,
-                    doc_id=str(metadata["doc_id"]),
-                    index=int(metadata["index"]),
-                    text=document,
-                    start_index=int(metadata["start_index"]),
-                    page=int(metadata["page"]) if "page" in metadata else None,
-                ),
-                score=1.0 - float(distance),
-            )
+            SearchResult(chunk=_to_chunk(chunk_id, document, metadata), score=1.0 - float(distance))
             for chunk_id, document, metadata, distance in rows
         ]
     except (KeyError, IndexError, TypeError, ValueError) as exc:

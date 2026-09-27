@@ -552,23 +552,14 @@ The **Streamlit playground** is a small web app where you upload *your own* PDFs
 uv run streamlit run src/rag_eval_platform/playground/app.py    # http://localhost:8501
 ```
 
+> **Update:** the playground has since grown into a visual learning tool with six tabs (Overview + one per phase). See [The visual playground](playground.md) for what each tab shows. The diagram below is the current layout.
+
 ```mermaid
 flowchart LR
-    subgraph tab1["① Upload & index"]
-        UP["📄 Upload PDF / MD / TXT"] --> SAVE["save_uploads<br/>skip duplicates"]
-        SAVE --> BUILD["build_index<br/>load → chunk → embed → store"]
-    end
-    subgraph tab2["② Chunks"]
-        SEE["Browse every chunk<br/>size · page · text"]
-    end
-    subgraph tab3["③ Ask"]
-        ASK["💬 Question"] --> RQ["retrieve_step<br/>vector search (+ re-rank)"]
-        RQ --> GEN["Generator.stream<br/>answer appears live"]
-        GEN --> TRACE["Trace: sources, cited,<br/>ranking before/after re-rank,<br/>tokens, timings, exact prompt"]
-    end
-    SIDEBAR["⚙️ Sidebar settings<br/>chunking · top-k · re-rank ·<br/>model · reasoning · temperature"] -.-> BUILD & RQ & GEN
-    BUILD --> SEE
-    BUILD --> ASK
+    SIDEBAR["⚙️ Sidebar settings<br/>chunking · top-k · re-rank ·<br/>model · reasoning · temperature"] -.-> ASK
+    ASK["💬 One question box"] --> TRACE[("QueryTrace in session state")]
+    TRACE --> OV["Overview<br/>all phases, one screen"]
+    TRACE --> T1["① Ingest"] & T2["② Embed"] & T3["③ Retrieve"] & T4["④ Generate"] & T5["⑤ Evaluate"]
 ```
 
 What using it feels like, step by step (5 = smooth, 1 = painful):
