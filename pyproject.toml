@@ -13,6 +13,7 @@ dependencies = [
     "chromadb-client==1.5.9",
     "fonttools>=4.66.0",
     "langchain-text-splitters>=1.1.2",
+    "numpy>=2.0",
     "pydantic-settings>=2.15.0",
     "pypdf>=6.19.0",
 ]
@@ -60,6 +61,7 @@ notebook = [
     "pandas>=3.0.6",
 ]
 ui = [
+    "plotly>=7.1.0",
     "streamlit>=1.64.0",
 ]
 
@@ -86,7 +88,7 @@ plugins = ["pydantic.mypy"]
 [[tool.mypy.overrides]]
 module = [
     "sentence_transformers", "sentence_transformers.*", "openai", "openai.*",
-    "streamlit", "streamlit.*",
+    "streamlit", "streamlit.*", "plotly", "plotly.*",
     "ragas", "ragas.*", "deepeval", "deepeval.*",
 ]
 ignore_missing_imports = true
@@ -94,7 +96,10 @@ follow_imports = "skip"
 
 # Streamlit is skipped above, so its cache decorators look untyped to mypy.
 [[tool.mypy.overrides]]
-module = ["rag_eval_platform.playground.app"]
+module = [
+    "rag_eval_platform.playground.app", "rag_eval_platform.playground.shared",
+    "rag_eval_platform.playground.tabs.*",
+]
 disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
@@ -109,8 +114,12 @@ markers = [
 [tool.coverage.run]
 source = ["rag_eval_platform"]
 branch = true
-# UI drawing code; its logic lives in playground/core.py and is unit-tested there.
-omit = ["*/playground/app.py"]
+# Drawing code; its logic lives in core.py, visuals.py and query_visuals.py (unit-tested).
+# charts.py is tested when Plotly is installed, which CI does not do.
+omit = [
+    "*/playground/app.py", "*/playground/shared.py", "*/playground/tabs/*",
+    "*/playground/charts.py",
+]
 
 [tool.coverage.report]
 show_missing = true
