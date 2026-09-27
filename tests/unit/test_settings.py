@@ -59,6 +59,7 @@ def test_generation_defaults_use_local_ollama() -> None:
     assert settings.ollama_base_url == "http://localhost:11434/v1"
     assert settings.llm_temperature == 0.0
     assert settings.llm_max_tokens == 1024
+    assert settings.llm_detailed_max_tokens == 2048
     assert settings.llm_timeout_seconds == 120.0
     assert settings.llm_reasoning_effort == "none"
 
