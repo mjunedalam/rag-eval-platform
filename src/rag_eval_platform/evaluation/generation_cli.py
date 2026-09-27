@@ -5,7 +5,7 @@ running with the generator and judge models pulled, ``uv sync --all-extras``). P
 summary, writes the full JSON report, and exits with:
 0 = all thresholds met, 1 = a metric is below its threshold, 2 = could not run.
 
-A full run is slow with a local judge (about a minute per question); use ``--limit`` for a
+A full run is slow with a local judge (1.5 to 2 minutes per question); use ``--limit`` for a
 quick check and ``--full`` to add context precision and recall.
 """
 
@@ -124,7 +124,9 @@ def format_generation_report(report: GenerationReport) -> str:
         n = sum(1 for r in report.examples if r.query_type == query_type)
         lines.append(f"{query_type:<13}{n:>4}{_row(summary)}")
 
-    unfaithful = [r for r in report.examples if (r.scores.faithfulness or 1.0) < 1.0]
+    # Compare with None explicitly: a faithfulness of 0.0 is falsy but is the worst case.
+    unfaithful = [r for r in report.examples
+                  if r.scores.faithfulness is not None and r.scores.faithfulness < 1.0]  # fmt: skip
     lines += ["", f"Answers with an unsupported claim: {len(unfaithful)}"]
     lines += [f"  {r.example_id}: faithfulness {r.scores.faithfulness:.2f}  {r.answer[:90]!r}"
               for r in unfaithful]  # fmt: skip

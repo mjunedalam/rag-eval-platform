@@ -81,7 +81,7 @@ Scored with RAGAS as the primary framework and DeepEval for pytest-style checks,
 - Citation validity is our own judge prompt (`CITATION_PROMPT_VERSION`): each sentence carrying `[n]` is paired with the text of source `n`, and the judge answers yes or no. All pairs of an answer go in one request.
 - Hallucination rate is the share of judged answers with faithfulness below 1, that is, with at least one claim the retrieved chunks do not support.
 - Refusals are not judged. Every golden question is answerable, so a refusal gets answer relevance 0 and no faithfulness score.
-- The run answers all questions first and judges them afterwards, so a laptop only holds one model in memory at a time. With a local judge a full run takes roughly a minute per question; `--limit N` scores the first N questions.
+- The run answers all questions first and judges them afterwards, so a laptop only holds one model in memory at a time. With a local judge a full run takes about an hour (1.5–2 minutes per question); `--limit N` scores the first N questions.
 - `pytest -m evaluation` runs DeepEval's faithfulness and answer-relevancy metrics on one golden question per query type, with the same judge and thresholds.
 
 Sanity check of the judge before trusting it: on a hand-made example, `gemma3:12b` scored a correct, cited answer 1.0 on both metrics, an invented answer 0.0 on faithfulness, and an off-topic answer 0.002 on answer relevance.
@@ -126,6 +126,28 @@ Recursive chunking (800 chars, 100 overlap) gives 40 chunks from the 14-document
 
 All three thresholds pass. Multi-hop questions are the weak slice: the three misses each found one of their two source documents but not the other. Precision@5 is 0.327, which is expected here: most questions have one relevant document, so at most one of up to five distinct documents can be relevant. Future experiments (re-ranking, chunk size, embedding model) are compared against this table.
 
+### Generation baseline (2026-09-27)
+
+Same index and retrieval settings as above. Answers by `qwen3:8b` (prompt `v1`, temperature 0, no reasoning), judged by `gemma3:12b` (citation prompt `v1`), all 30 questions, default metrics. The run took about an hour on an M3 Pro (1.5–2 minutes of judging per question).
+
+| Slice | n | Faithfulness | Answer relevance | Citation validity |
+|---|---|---|---|---|
+| **Overall** | 30 | **0.930** | **0.814** | 0.808 |
+| short | 16 | 0.912 | 0.868 | 0.766 |
+| paraphrase | 8 | 1.000 | 0.666 | 0.875 |
+| multi_hop | 6 | 0.886 | 0.865 | 0.833 |
+
+Hallucination rate 0.167 (5 of 30 answers have at least one unsupported claim), refusal rate 0, invalid-citation rate 0. Both thresholds pass, answer relevance only narrowly.
+
+What the per-question view shows:
+
+- **Paraphrase questions** are fully faithful but have the lowest relevance: the answers are true but drift from the question as it was worded.
+- **`vectordb-001` ("What is HNSW?") scores faithfulness 0.0**, although the answer is factually correct. None of the five retrieved chunks mentions HNSW: the definition is in `vector_databases.md#0`, but retrieval returned `vector_databases.md#1`. The model answered from memory, which the judge correctly flags. Document-level retrieval metrics count this question as a hit, so only the generation judge exposes it (see Known limitations).
+- The 10 unsupported citations are mostly true sentences credited to the wrong chunk. One answer that *explains* citations contains example markers like `[1], [2], [3]`, which the checker cannot tell apart from real citations.
+- Answers whose retrieval missed a relevant document (3) have lower faithfulness (0.771) than the rest (0.948).
+
+`notebooks/generation_evaluation.ipynb` reproduces all of these views step by step.
+
 ## 5. Production observability
 
 | Practice | How |
@@ -147,4 +169,6 @@ Every retrieval or prompt change (chunk size, chunking strategy, top-k, embeddin
 
 - An LLM judge is itself a model and can be wrong; it approximates human judgement rather than replacing it.
 - A small golden dataset can overfit: pipeline changes may improve the benchmark without helping real users. Keep growing it from production traffic.
-- Document-level relevance does not detect a retrieved chunk that comes from the right document but the wrong section.
+- Document-level relevance does not detect a retrieved chunk that comes from the right document but the wrong section. The generation judge catches the consequence (`vectordb-001` in the generation baseline).
+- Citation validity treats every `[n]` in an answer as a citation, including example markers in an answer that explains citations.
+- A local judge is slow (about an hour for 30 questions), so the full generation evaluation is run on demand, not on every pull request.

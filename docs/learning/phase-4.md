@@ -259,9 +259,9 @@ xychart-beta
     bar [6, 30, 18, 18]
 ```
 
-About **70 seconds per question**, almost all of it the judge.
+That is about **70 seconds** in the best case; the full 30-question run averaged **1.5–2 minutes per question** (about an hour), almost all of it the judge.
 
-So the default run scores the two thresholded metrics plus citations (~30 min for 30 questions), and:
+So the default run scores the two thresholded metrics plus citations (about an hour for 30 questions), and:
 - `--limit 5` scores the first 5 questions for a quick check;
 - `--full` adds context precision and recall (~2 more calls per question).
 
@@ -320,7 +320,55 @@ sequenceDiagram
 
 ## 11. Results on the 30 golden questions
 
-_Filled in from the baseline run (see `docs/evaluation_methodology.md`)._
+The first full run (the **baseline** every later change is compared against):
+
+| Slice | n | Faithfulness | Answer relevance | Citation validity |
+|---|---|---|---|---|
+| **Overall** | 30 | **0.930** ✅ | **0.814** ✅ | 0.808 |
+| short | 16 | 0.912 | 0.868 | 0.766 |
+| paraphrase | 8 | 1.000 | 0.666 | 0.875 |
+| multi_hop | 6 | 0.886 | 0.865 | 0.833 |
+
+```mermaid
+xychart-beta
+    title "Baseline vs pass marks (line)"
+    x-axis ["faithfulness", "answer relevance"]
+    y-axis "Score" 0 --> 1
+    bar [0.930, 0.814]
+    line [0.85, 0.80]
+```
+
+Both pass marks are met, answer relevance only just. Hallucination rate is 0.167: **5 of 30** answers contain at least one unsupported claim. No refusals, no invalid citations.
+
+### Three things the numbers taught us
+
+**1. Paraphrase answers are true but drift.** Faithfulness 1.000, relevance 0.666. When a question is reworded, the model answers correctly but about a slightly different question. Faithfulness alone would call this perfect.
+
+**2. The judge caught what retrieval metrics missed: "What is HNSW?"**
+
+```mermaid
+flowchart LR
+    Q["❓ What is HNSW?"] --> R["🔎 Retriever"]
+    R --> C1["vector_databases.md#1<br/>right document,<br/>WRONG section ❌"]
+    D["vector_databases.md#0<br/>has the definition<br/>(not retrieved)"]
+    C1 --> M["🤖 qwen3 answers<br/>from its own memory"]
+    M --> A["'HNSW stands for Hierarchical<br/>Navigable Small World…' [5]<br/>true, but not in any chunk"]
+    A --> J["🧑‍⚖️ faithfulness 0.0<br/>citation validity 0.0"]
+    C1 -. "Phase 2 metric: document retrieved = HIT ✅" .-> H["retrieval says fine"]
+
+    classDef bad fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef ok fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class C1,J bad
+    class H ok
+```
+
+The answer is **correct**, and still a hallucination by RAG's definition: nothing retrieved supports it, so a user can't check it and the next wrong "memory" would look exactly the same. Retrieval metrics label relevance per **document**, so they counted this as a hit. Only the generation judge exposed it.
+
+**3. Unsupported citations are mostly the wrong footnote, not a wrong fact.** Of 10 unsupported citations, most are true sentences credited to a different chunk. One answer *explained* citations and contained example markers like `[1], [2], [3]`; the checker can't tell examples from real citations. Every automatic metric has blind spots like this; that is why we read the flagged cases.
+
+Answers whose retrieval missed a relevant document (3 questions) scored lower faithfulness (0.771) than the rest (0.948), which is the chain RAG depends on: bad retrieval → unsupported answers.
+
+`notebooks/generation_evaluation.ipynb` walks through all of this step by step with charts.
 
 ---
 
@@ -590,7 +638,7 @@ uv sync --all-extras --all-groups                       # + RAGAS, DeepEval
 # quick check (first 3 questions)
 uv run python scripts/run_generation_evaluation.py --limit 3
 
-# full exam (~30 min) and with context metrics (~50 min)
+# full exam (~1 hour) and with context metrics (~1.5 hours)
 uv run python scripts/run_generation_evaluation.py
 uv run python scripts/run_generation_evaluation.py --full
 

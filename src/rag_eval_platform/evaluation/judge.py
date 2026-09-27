@@ -14,6 +14,7 @@ The judge must differ from the model being evaluated (checked in settings). Need
 
 import asyncio
 import math
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, Self
@@ -69,7 +70,10 @@ class RagasJudge:
         self._hint = hint
         # One loop for the judge's lifetime: the async HTTP client RAGAS drives keeps
         # connections bound to the loop it first ran on, so a new loop per call breaks it.
+        # It runs on its own thread, so scoring also works where a loop is already running
+        # (a Jupyter notebook), which would refuse a second loop on the same thread.
         self._loop = asyncio.new_event_loop()
+        threading.Thread(target=self._loop.run_forever, name="ragas-judge", daemon=True).start()
 
     @property
     def model(self) -> str:
@@ -108,7 +112,8 @@ class RagasJudge:
 
     def score(self, sample: JudgeSample, *, full: bool = False) -> JudgeScores:
         names = CORE_METRICS + (CONTEXT_METRICS if full else ())
-        return JudgeScores(**self._loop.run_until_complete(self._score_all(sample, names)))
+        future = asyncio.run_coroutine_threadsafe(self._score_all(sample, names), self._loop)
+        return JudgeScores(**future.result())
 
     async def _score_all(
         self, sample: JudgeSample, names: tuple[str, ...]

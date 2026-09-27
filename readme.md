@@ -305,7 +305,18 @@ xychart-beta
 
 All thresholds pass (Recall ≥ 0.80, MRR ≥ 0.70, NDCG ≥ 0.70). **Re-ranking** lifts multi-hop recall from 0.667 to **0.917** (overall MRR 0.878 → 0.928) at the cost of one short question — a trade-off the evaluation makes visible.
 
-**Generation with `qwen3:8b`** on the same 30 questions: every answer cited its sources (30/30), no citation pointed to a non-existent source (0/30), no wrongful refusals, and 27/30 cited a document the golden set marks as correct; median 5.4 s per answer on an M3 Pro. Grading *faithfulness* and *citation validity* is Phase 4.
+**Generation with `qwen3:8b`** on the same 30 questions: every answer cited its sources (30/30), no citation pointed to a non-existent source (0/30), no wrongful refusals, and 27/30 cited a document the golden set marks as correct; median 5.4 s per answer on an M3 Pro.
+
+**Generation baseline** (Phase 4): the same 30 answers graded by a local `gemma3:12b` judge.
+
+| Slice | n | Faithfulness | Answer relevance | Citation validity |
+|---|---|---|---|---|
+| **Overall** | 30 | **0.930** | **0.814** | 0.808 |
+| short | 16 | 0.912 | 0.868 | 0.766 |
+| paraphrase | 8 | 1.000 | 0.666 | 0.875 |
+| multi_hop | 6 | 0.886 | 0.865 | 0.833 |
+
+Both thresholds pass (faithfulness ≥ 0.85, answer relevance ≥ 0.80). Hallucination rate is 0.167 (5 of 30). The judge caught a case retrieval metrics miss: for "What is HNSW?" the right *document* was retrieved but not the chunk that defines HNSW, so the model answered from memory (faithfulness 0.0). Details: [evaluation methodology](docs/evaluation_methodology.md) and `notebooks/generation_evaluation.ipynb`.
 
 Where the time goes for one question (playground, 1,505-chunk index, model warm):
 
@@ -380,7 +391,7 @@ uv run python scripts/run_evaluation.py      # golden-set scores vs thresholds
 
 The first run downloads the embedding model from Hugging Face.
 
-**Judge the answers** (Phase 4). A second local model grades every answer; a full run takes about a minute per question:
+**Judge the answers** (Phase 4). A second local model grades every answer; a full run takes about an hour (1.5–2 minutes per question):
 
 ```bash
 ollama pull gemma3:12b                                            # the judge, ~8 GB
