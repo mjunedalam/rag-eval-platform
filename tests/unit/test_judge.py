@@ -101,6 +101,17 @@ class TestRagasJudge:
         assert len(loops) == 4
         assert len(set(map(id, loops))) == 1
 
+    def test_works_when_called_inside_a_running_event_loop(self) -> None:
+        # Jupyter runs cells inside its own event loop; the judge must still work there.
+        judge = RagasJudge("judge", fake_metrics(faithfulness=0.5))
+
+        async def notebook_cell() -> JudgeScores:
+            return judge.score(SAMPLE)
+
+        scores = asyncio.run(notebook_cell())
+
+        assert scores.faithfulness == 0.5
+
     def test_nan_from_the_judge_becomes_none(self) -> None:
         scores = RagasJudge("judge", fake_metrics(faithfulness=math.nan)).score(SAMPLE)
 
