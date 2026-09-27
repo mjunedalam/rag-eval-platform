@@ -16,6 +16,7 @@ ChunkStrategy = Literal["fixed", "recursive", "semantic"]
 EmbeddingProvider = Literal["sentence_transformers", "openai"]
 VectorStoreBackend = Literal["chroma", "qdrant"]
 LlmProvider = Literal["ollama", "openai", "anthropic"]
+JudgeProvider = Literal["ollama", "openai"]
 # "default" sends no reasoning_effort at all (for models that do not support the option).
 ReasoningEffort = Literal["none", "low", "medium", "high", "default"]
 
@@ -76,6 +77,14 @@ class Settings(BaseSettings):
         default=None, validation_alias=AliasChoices("ANTHROPIC_API_KEY", "RAG_ANTHROPIC_API_KEY")
     )
 
+    # LLM judge for generation evaluation. It must differ from the model being evaluated,
+    # to limit self-preference bias; changing it means re-baselining the scores.
+    judge_provider: JudgeProvider = "ollama"
+    judge_model: str = "gemma3:12b"
+    judge_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    judge_max_tokens: int = Field(default=4096, gt=0)
+    judge_timeout_seconds: float = Field(default=300.0, gt=0)
+
     # Evaluation thresholds (see docs/evaluation_methodology.md)
     golden_dataset_path: Path = Path("data/golden_dataset/qa_pairs.json")
     min_recall_at_k: Score = 0.80
@@ -93,6 +102,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"chunk_overlap ({self.chunk_overlap}) must be smaller than "
                 f"chunk_size ({self.chunk_size})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_judge_differs(self) -> Self:
+        if (self.judge_provider, self.judge_model) == (self.llm_provider, self.llm_model):
+            raise ValueError(
+                f"the judge model ({self.judge_model}) must differ from the model being "
+                "evaluated (RAG_LLM_MODEL); set RAG_JUDGE_MODEL to another model"
             )
         return self
 

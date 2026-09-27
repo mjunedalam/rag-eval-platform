@@ -23,7 +23,15 @@ local-embeddings = [
     "torch>=2.14.0",
 ]
 openai = [
-    "openai>=3.19.2",
+    # 2.x is enough for our calls; newer 3.x needs a jiter that ragas' instructor rejects.
+    "openai>=2.0.0",
+]
+# Generation evaluation: RAGAS metrics and DeepEval pytest checks, scored by an LLM judge.
+evaluation = [
+    "deepeval>=4.2.6",
+    "ragas>=0.4.3",
+    # ragas 0.4.3 imports langchain_community.chat_models.vertexai, removed in 0.4.2.
+    "langchain-community<0.4.2",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -48,6 +56,7 @@ dev = [
 notebook = [
     "ipykernel>=7.3.0",
     "jupyterlab>=4.6.4",
+    "matplotlib>=3.11.2",
     "pandas>=3.0.6",
 ]
 ui = [
@@ -78,6 +87,7 @@ plugins = ["pydantic.mypy"]
 module = [
     "sentence_transformers", "sentence_transformers.*", "openai", "openai.*",
     "streamlit", "streamlit.*",
+    "ragas", "ragas.*", "deepeval", "deepeval.*",
 ]
 ignore_missing_imports = true
 follow_imports = "skip"
@@ -90,7 +100,7 @@ disallow_untyped_decorators = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -p no:deepeval"
 markers = [
     "integration: tests that need external services (vector store, network)",
     "evaluation: golden-dataset evaluation and threshold checks",

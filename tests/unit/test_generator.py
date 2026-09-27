@@ -271,6 +271,38 @@ class TestFromSettings:
         with pytest.raises(NotImplementedError, match="anthropic"):
             OpenAICompatibleClient.from_settings(Settings(llm_provider="anthropic"))
 
+    def test_connect_builds_a_client_for_any_model(self, captured: dict[str, Any]) -> None:
+        client = OpenAICompatibleClient.connect(
+            Settings(), provider="ollama", model="gemma3:12b",
+            temperature=0.0, max_tokens=4096, timeout=300.0,
+        )  # fmt: skip
+
+        assert client.model == "gemma3:12b"
+        assert client.reasoning_effort is None
+        assert captured["base_url"] == "http://localhost:11434/v1"
+        assert captured["timeout"] == 300.0
+
+    def test_connect_to_openai_requires_a_key(self, captured: dict[str, Any]) -> None:
+        with pytest.raises(GenerationError, match="OPENAI_API_KEY"):
+            OpenAICompatibleClient.connect(
+                Settings(), provider="openai", model="gpt-x",
+                temperature=0.0, max_tokens=64, timeout=10.0,
+            )  # fmt: skip
+
+
+def test_client_options_for_ollama_and_openai() -> None:
+    options, hint = generator_module.client_options(Settings(), "ollama", "gemma3:12b", 42.0)
+    assert options == {
+        "base_url": "http://localhost:11434/v1",
+        "api_key": "ollama",
+        "timeout": 42.0,
+    }
+    assert "ollama pull gemma3:12b" in hint
+
+    settings = Settings(openai_api_key=SecretStr("k"))
+    options, _ = generator_module.client_options(settings, "openai", "gpt-x", 5.0)
+    assert options == {"api_key": "k", "timeout": 5.0}
+
 
 def test_create_generator_wraps_client_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     llm = FakeLlm("A [1].", model="from-settings")
