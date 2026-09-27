@@ -67,6 +67,23 @@ Most RAG demos stop at "it answered". In production the hard questions are diffe
 | 7 · Observability | Dashboard of scores, latency and cost over time | Planned |
 | 8 · Security and governance | PII masking, retrieval-time access control, audit logging | Planned |
 
+```mermaid
+timeline
+    title Roadmap
+    section ✅ Done
+        0 · Setup : uv, typed settings, JSON logs : CI
+        1 · Ingestion : md / txt / PDF loaders : chunking, embeddings
+        2 · Retrieval : Chroma in Docker, re-ranking : retrieval evaluation
+        3 · Generation : Ollama qwen3 8b, cited answers : pipeline, ask CLI, playground
+    section 🔜 Next
+        4 · Generation evaluation : RAGAS, DeepEval : LLM-as-a-judge
+    section Planned
+        5 · CI gate : block regressions
+        6 · API + deployment : FastAPI, Docker image
+        7 · Observability : scores, latency, cost dashboard
+        8 · Security : PII masking, access control, audit
+```
+
 ---
 
 ## Architecture
@@ -109,6 +126,80 @@ flowchart LR
 
 **Evaluation**: 30 curated golden questions run through the retriever; scores are averaged overall and per question type and compared with thresholds from configuration (exit code `0` pass, `1` below threshold, `2` could not run).
 
+### One question, step by step
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant P as RagPipeline
+    participant E as Embedder
+    participant C as Chroma
+    participant X as Re-ranker (optional)
+    participant G as Generator
+    participant L as Ollama · qwen3:8b
+    U->>P: "Why should the judge model be pinned?"
+    P->>E: embed question (same model as chunks)
+    E-->>P: 384-dim vector
+    P->>C: nearest chunks (cosine, top-k or 20 candidates)
+    C-->>P: chunks + scores
+    opt RAG_RERANK=true
+        P->>X: score each (question, chunk) pair
+        X-->>P: best k
+    end
+    P->>G: question + k chunks
+    G->>L: rules + numbered sources [1..k] + question
+    L-->>G: text with [n] citations (streamed in ask.py and the playground)
+    G-->>P: Answer: citations mapped, invalid flagged, refusal detected
+    P->>P: log one "Question answered" JSON line
+    P-->>U: answer + sources
+```
+
+### Data model
+
+```mermaid
+erDiagram
+    DOCUMENT ||--|{ CHUNK : "split into"
+    CHUNK ||--|| VECTOR_RECORD : "embedded + stored as"
+    VECTOR_RECORD ||--o{ SEARCH_RESULT : "retrieved as"
+    ANSWER ||--|{ SEARCH_RESULT : "sources [1..k]"
+    ANSWER ||--o{ CITATION : "cites"
+    CITATION }o--|| SEARCH_RESULT : "points at"
+    GOLDEN_EXAMPLE }o--|{ DOCUMENT : "relevant_doc_ids"
+    DOCUMENT {
+        string id "path in data/raw"
+        list page_starts "PDFs"
+    }
+    CHUNK {
+        string id "doc_id#index"
+        string doc_id FK
+        int page "PDFs"
+    }
+    ANSWER {
+        string text
+        list invalid_citations
+        string model
+        string prompt_version
+    }
+    GOLDEN_EXAMPLE {
+        string question
+        string query_type
+    }
+```
+
+Relevance is labelled at the **document** level, so the golden set survives any change to chunking.
+
+### Evaluation loop
+
+```mermaid
+flowchart LR
+    CH["A change<br/>chunk size · model · top-k ·<br/>re-ranking · prompt"] --> RUN["Re-index and run<br/>the 30 golden questions"]
+    RUN --> SC["Scores<br/>overall + per query type"]
+    SC --> GATE{"≥ thresholds?"}
+    GATE -->|"yes · exit 0"| SHIP["✅ merge"]
+    GATE -->|"no · exit 1"| FIX["🔴 investigate the<br/>per-question misses"]
+    FIX --> CH
+```
+
 ### Design principles
 
 - **Pluggable backends behind interfaces.** Embedder, vector store, re-ranker and LLM client are `Protocol`s, so Chroma ↔ Qdrant or Ollama ↔ OpenAI swap without touching business logic, and unit tests use fakes.
@@ -116,6 +207,20 @@ flowchart LR
 - **Traceable answers.** Numbered sources and `[n]` citations tie every claim to a chunk; the prompt is versioned so scores are reproducible.
 - **Fail loudly, with the fix.** Invalid data, missing services or packages raise clear errors that say what to run.
 - **Document-level relevance.** The golden dataset labels relevant *documents*, so it stays valid when chunking changes.
+
+```mermaid
+flowchart TB
+    subgraph logic["Business logic (depends only on Protocols)"]
+        RET["Retriever"] ~~~ GEN["Generator"]
+    end
+    RET --> EMB{{"Embedder"}} & VS{{"VectorStore"}} & RR{{"Reranker"}}
+    GEN --> LLM{{"LlmClient"}}
+    EMB --> ST["Sentence Transformers"] & OAE["OpenAI embeddings"]
+    VS --> CHR["Chroma"] & QD["Qdrant (planned)"]
+    RR --> CE["Cross-encoder"]
+    LLM --> OC["OpenAI-compatible client<br/>Ollama · OpenAI"]
+    EMB & VS & LLM -.-> FAKE["Fakes in unit tests"]
+```
 
 ### Target architecture
 
@@ -145,6 +250,35 @@ Details: [docs/architecture.md](docs/architecture.md) · [docs/evaluation_method
 | **Infrastructure** | Docker Compose (Chroma, optional admin UI) | FastAPI + Uvicorn, API Docker image |
 | **Security** | Secrets only in git-ignored `.env`, pre-commit and CI secret scanning, prompt-injection guard in the system prompt | Presidio PII masking, access control, audit logs |
 
+```mermaid
+mindmap
+  root((RAG Eval<br/>Platform))
+    Ingestion
+      pypdf + fontTools
+      LangChain text splitters
+    Embeddings
+      Sentence Transformers
+      OpenAI optional
+    Storage
+      Chroma in Docker
+      Qdrant planned
+    Generation
+      Ollama · qwen3:8b
+      OpenAI-compatible client
+    Evaluation
+      Golden dataset
+      Retrieval metrics
+      RAGAS · DeepEval planned
+    UI
+      Streamlit playground
+      JupyterLab
+      chromadb-admin
+    Quality
+      pytest
+      Ruff · mypy strict
+      GitHub Actions · gitleaks
+```
+
 Full per-phase list with status: [Tooling by phase](docs/architecture.md#tooling-by-phase).
 
 ---
@@ -160,9 +294,39 @@ Full per-phase list with status: [Tooling by phase](docs/architecture.md#tooling
 | paraphrase | 8 | 1.000 | 0.938 | 0.954 |
 | multi_hop | 6 | 0.667 | 0.750 | 0.646 |
 
+```mermaid
+xychart-beta
+    title "Recall@5 by query type (line = 0.80 threshold)"
+    x-axis ["overall", "short", "paraphrase", "multi_hop"]
+    y-axis "Recall@5" 0 --> 1
+    bar [0.933, 1.0, 1.0, 0.667]
+    line [0.8, 0.8, 0.8, 0.8]
+```
+
 All thresholds pass (Recall ≥ 0.80, MRR ≥ 0.70, NDCG ≥ 0.70). **Re-ranking** lifts multi-hop recall from 0.667 to **0.917** (overall MRR 0.878 → 0.928) at the cost of one short question — a trade-off the evaluation makes visible.
 
 **Generation with `qwen3:8b`** on the same 30 questions: every answer cited its sources (30/30), no citation pointed to a non-existent source (0/30), no wrongful refusals, and 27/30 cited a document the golden set marks as correct; median 5.4 s per answer on an M3 Pro. Grading *faithfulness* and *citation validity* is Phase 4.
+
+Where the time goes for one question (playground, 1,505-chunk index, model warm):
+
+```mermaid
+gantt
+    title One question, measured
+    dateFormat x
+    axisFormat %S.%L s
+    section Retrieval
+    Embed + vector search (512 ms) :0, 512
+    section Generation
+    qwen3 8b answer (5.4 s)        :512, 5912
+```
+
+```mermaid
+pie showData
+    title Cited document vs golden set (qwen3:8b, 30 questions)
+    "Correct document" : 27
+    "Right facts, wrong card" : 2
+    "Wrong chunk (multi-hop)" : 1
+```
 
 ---
 
@@ -177,6 +341,18 @@ All thresholds pass (Recall ≥ 0.80, MRR ≥ 0.70, NDCG ≥ 0.70). **Re-ranking
 | [Ollama](https://ollama.com) | Runs the local LLM (use the native app on macOS so it can use the GPU) | Ollama website, or `brew install ollama` |
 
 About 8 GB of free disk space is needed for the models (PyTorch, embedding and re-ranking models, and `qwen3:8b`).
+
+```mermaid
+flowchart LR
+    I["1 · uv sync<br/>--all-extras --all-groups"] --> S["2 · docker compose up<br/>+ ollama pull qwen3:8b"]
+    S --> ING["3a · run_ingestion<br/>→ chunks.jsonl"]
+    ING --> SEED["3b · seed_vector_store<br/>→ Chroma"]
+    SEED --> EV["3c · run_evaluation<br/>→ scores"]
+    SEED --> ASK["4 · ask.py<br/>terminal"]
+    S --> PG["4 · playground<br/>upload your own PDFs"]
+```
+
+The playground builds its own index from your uploads, so it only needs step 2.
 
 ### 1. Install
 
@@ -219,6 +395,17 @@ uv run streamlit run src/rag_eval_platform/playground/app.py    # http://localho
 ```
 
 Upload PDFs, Markdown or text files, adjust chunking, retrieval and generation settings in the sidebar, build the index, and ask in a chat: answers **stream in as the model writes them**. Each answer shows the retrieved chunks with scores, which were cited, the ranking before and after re-ranking, token counts, timings and the exact prompt sent to the model. Uploads stay local in `data/playground/` (git-ignored) and in their own Chroma collection, so the evaluation corpus is never affected.
+
+```mermaid
+flowchart LR
+    subgraph eval["Evaluation (committed)"]
+        RAW["data/raw/<br/>14 docs"] --> C1[("rag_documents")] --> GS["golden-set scores"]
+    end
+    subgraph play["Playground (private)"]
+        UP["your uploads"] --> DP["data/playground/<br/>git-ignored"] --> C2[("playground")] --> CHAT["chat + trace"]
+    end
+    C1 x--x C2
+```
 
 ### 5. Explore the data (optional)
 
@@ -271,6 +458,15 @@ uv run mypy src tests                           # strict type checking
 Unit tests replace Chroma, the models and the LLM with small fakes that satisfy the same interfaces, so they run in seconds anywhere. Integration tests exercise the real tools — including a full flow from an uploaded PDF to a page-cited answer — and skip politely when a tool isn't running.
 
 GitHub Actions runs on every push and pull request:
+
+```mermaid
+flowchart LR
+    PUSH["push / PR"] --> J1["Lint, type-check and test<br/>Ruff · mypy strict · unit tests + coverage"]
+    PUSH --> J2["Integration tests<br/>real Chroma service container"]
+    PUSH --> J3["Secret scan<br/>gitleaks, full history"]
+    J1 & J2 & J3 --> OK{"all green?"}
+    OK -->|yes| M["✅ ready to merge"]
+```
 
 | Job | Checks |
 |---|---|

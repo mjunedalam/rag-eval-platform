@@ -2,6 +2,36 @@
 
 This page explains everything we built in Phase 2, one idea at a time, with everyday analogies. No prior knowledge of vector databases or Docker is assumed.
 
+```mermaid
+mindmap
+  root((Phase 2<br/>Retrieval))
+    Infrastructure
+      Docker + Compose
+      Chroma as a server
+      Port 8001 · volume
+      chromadb-admin UI
+    Storing
+      Collection + records
+      Embeddings · 384 numbers
+      Seeding · replace all
+      Batches
+    Finding
+      Cosine similarity
+      HNSW index
+      Retriever · top-k
+      Re-ranking · cross-encoder
+    Grading
+      Golden set · 30 questions
+      Recall · MRR · NDCG
+      Pass marks + exit codes
+      Baseline report
+    Engineering
+      Protocols + fakes
+      Unit vs integration tests
+      Optional extras
+      CI with real Chroma
+```
+
 ---
 
 ## 0. Where Phase 2 fits
@@ -18,6 +48,26 @@ Think of the whole project as a **library with a smart librarian**.
 | **Re-ranker** | **A senior librarian who double-checks the shortlist** | **2** |
 | **Evaluator** | **The exam that grades the librarian** | **2** |
 | Generation (LLM) | Writing the answer from the cards | 3 (next) |
+
+```mermaid
+flowchart LR
+    B["📚 Books<br/>data/raw/"] --> C["✂️ Index cards<br/>chunks.jsonl"]
+    C --> E["🔢 Meaning codes<br/>embeddings"]
+    E --> CAB[("🗄️ Filing cabinet<br/>Chroma")]
+    Q(["❓ Question"]) --> LIB["🧑‍💼 Librarian<br/>retriever"]
+    CAB --> LIB
+    LIB -.->|optional| SR["🧐 Senior librarian<br/>re-ranker"]
+    LIB --> CARDS(["🃏 Top 5 cards"])
+    SR -.-> CARDS
+    CARDS --> EX["📝 Exam<br/>evaluator"]
+
+    classDef p1 fill:#f3f4f6,stroke:#6b7280,color:#111827
+    classDef p2 fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    class B,C,E p1
+    class CAB,LIB,SR,EX p2
+```
+
+Grey = Phase 1, blue = built in Phase 2.
 
 After Phase 1 we had index cards (`data/processed/chunks.jsonl`). In Phase 2 we built the **filing cabinet**, the **librarian**, and the **exam** — and got the first real grades.
 
@@ -47,6 +97,15 @@ Docker is like buying a **sealed microwave**. You don't build a microwave from p
 | **Port mapping** (`8001:8000`) | Connects a port on your Mac to a port inside the container | The container's door is number 8000 inside the building; from the street you knock on door 8001 |
 | **Healthcheck** | Docker asks the app "are you OK?" every few seconds | The microwave's little green "ready" light |
 
+```mermaid
+flowchart LR
+    IMG["📦 Image<br/>chromadb/chroma:1.5.9<br/>(the boxed microwave)"] -->|"docker compose up"| CON["▶️ Container<br/>Chroma listening on 8000<br/>(plugged in and on)"]
+    PY["🐍 Our code"] -->|"localhost:8001"| PM{{"🚪 port mapping<br/>8001 → 8000"}}
+    PM --> CON
+    HC["💚 Healthcheck"] -.->|"are you OK?"| CON
+    CON <-->|"reads / writes"| VOL[("🧊 Volume chroma-data<br/>survives restarts")]
+```
+
 ### Docker Compose
 Starting containers one by one with long commands is tedious. **Docker Compose** lets us describe all our "appliances" in one file — [docker/docker-compose.yml](../../docker/docker-compose.yml) — and start them together:
 
@@ -57,6 +116,23 @@ docker compose -f docker/docker-compose.yml down -v   # switch off AND delete th
 ```
 
 `-d` means "run in the background" so your terminal stays free.
+
+The life of our Chroma container:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Starting: docker compose up -d
+    Starting --> Healthy: healthcheck answers
+    Starting --> Unhealthy: healthcheck keeps failing
+    Unhealthy --> Healthy: recovers
+    Healthy --> Stopped: docker compose down
+    Stopped --> Starting: docker compose up -d
+    Healthy --> [*]: docker compose down -v (also deletes the volume, all cards gone)
+    note right of Stopped
+        data is still in the
+        chroma-data volume
+    end note
+```
 
 ### Three decisions we made
 1. **Port 8001, not 8000.** Chroma listens on 8000 inside the container, but we expose it as **8001** on your Mac, because port 8000 is where our own API (FastAPI) will live later. Two shops can't share one door.
@@ -82,6 +158,21 @@ Chroma can run in two ways:
 |---|---|---|
 | Embedded | Chroma lives *inside* your Python program | Keeping all stock in your own backpack |
 | **Server (what we use)** | Chroma runs in its own container; our code talks to it over the network (HTTP) | Calling a **warehouse** by phone: "store these boxes", "find me boxes like this one" |
+
+```mermaid
+flowchart TB
+    subgraph emb["Embedded (not used)"]
+        direction LR
+        P1["🐍 Python program<br/>+ Chroma inside"] --- D1[("files")]
+    end
+    subgraph srv["Server (what we use)"]
+        direction LR
+        S["seed script"] -->|HTTP| CH[("🐳 Chroma server")]
+        N["notebook"] -->|HTTP| CH
+        A["ask.py / playground"] -->|HTTP| CH
+        CI["GitHub CI"] -->|HTTP| CH2[("🐳 its own Chroma")]
+    end
+```
 
 We chose **server mode** because:
 - It is how real companies run it (the app and the database are separate).
@@ -115,7 +206,66 @@ Each **record** (one index card) has four parts:
 | **embedding** | 384 numbers | The "meaning code" used for sorting |
 | **metadata** | `doc_id`, `index`, `start_index`, `page` | Sticky notes: which book, which position, which page |
 
+```mermaid
+flowchart LR
+    subgraph cabinet["🗄️ Chroma"]
+        subgraph drawer["Collection · rag_documents (one drawer)"]
+            subgraph card["🃏 One record"]
+                ID["<b>id</b><br/>retrieval_metrics.md#2"]
+                DOC["<b>document</b><br/>'MRR measures how high…'"]
+                VEC["<b>embedding</b><br/>[0.021, -0.113, … 384 numbers]"]
+                META["<b>metadata</b><br/>doc_id · index · start_index · page"]
+            end
+            MORE["… 39 more cards"]
+        end
+        DR2["Collection · playground<br/>(Phase 3)"]
+    end
+```
+
 The metadata is important: when the librarian hands you a card, you can see **which book** it came from — that's what the exam grades, and later what citations will point to (`[1] → retrieval_metrics.md`, page 2 for PDFs).
+
+How all the pieces of data relate, from a book to a stored card to the exam that checks it (an **entity-relationship diagram**: `||--|{` reads "one … to one or more"):
+
+```mermaid
+erDiagram
+    DOCUMENT ||--|{ CHUNK : "is split into"
+    CHUNK ||--|| CHROMA_RECORD : "is stored as"
+    CHROMA_RECORD ||--o{ SEARCH_RESULT : "is returned as"
+    GOLDEN_EXAMPLE }o--|{ DOCUMENT : "relevant_doc_ids"
+    DOCUMENT {
+        string id "path, e.g. retrieval_metrics.md"
+        string text
+        string format "md, txt or pdf"
+        list page_starts "PDFs only"
+    }
+    CHUNK {
+        string id "doc_id#index"
+        string doc_id FK
+        int index
+        int start_index
+        int page "PDFs only"
+        string text
+    }
+    CHROMA_RECORD {
+        string id "same as chunk id"
+        string document "chunk text"
+        float_list embedding "384 numbers"
+        map metadata "doc_id, index, start_index, page"
+    }
+    SEARCH_RESULT {
+        Chunk chunk
+        float score "1 - cosine distance"
+    }
+    GOLDEN_EXAMPLE {
+        string id
+        string question
+        string expected_answer
+        list relevant_doc_ids
+        string query_type "short, paraphrase, multi_hop"
+    }
+```
+
+The exam's link goes to **documents**, not chunks: that is why the golden set stays valid when chunk size changes.
 
 One small gotcha we handled: **Chroma does not allow empty (`None`) metadata values.** Markdown chunks have no page number, so we simply *leave out* the `page` sticky note for them, and put it back as `None` when reading.
 
@@ -130,6 +280,26 @@ Imagine every text is an **arrow** pointing somewhere in space. Texts with simil
 - "What is Newton's second law?" → ↗
 - "Force equals mass times acceleration." → ↗ (almost the same direction)
 - "The Eiffel Tower is in Paris." → ← (very different direction)
+
+A picture of this "meaning space", squeezed into 2 dimensions (the real one has 384):
+
+```mermaid
+quadrantChart
+    title Meaning space (illustrative, 2 of 384 dimensions)
+    x-axis "about places" --> "about physics"
+    y-axis "everyday" --> "technical"
+    quadrant-1 physics and maths
+    quadrant-2 geography facts
+    quadrant-3 everyday life
+    quadrant-4 physics in daily life
+    "Question: Newton's 2nd law?": [0.85, 0.82]
+    "F = m × a": [0.9, 0.88]
+    "Pushing a cart": [0.7, 0.3]
+    "Eiffel Tower is in Paris": [0.2, 0.3]
+    "Paris population": [0.15, 0.6]
+```
+
+Points that sit close together have similar meaning; the question lands right next to the card that answers it.
 
 **Cosine similarity** measures the angle between two arrows:
 
@@ -149,7 +319,17 @@ So in our code the score we return is `1.0 - distance`, where **higher = more re
 
 **Why "normalised" vectors matter:** our embedder makes every arrow exactly length 1. Then cosine similarity is simply multiplying the numbers and adding them up (the "dot product") — fast and simple. You can see this in the notebook: the vector length prints as `1.0`.
 
-**How is search fast?** Chroma doesn't compare your question with every card one by one. It uses an index called **HNSW** — like a city's road map with highways and local streets: jump along the highways to the right neighbourhood, then walk the local streets to the exact house. We don't write this; Chroma does it for us. We only tell it to use cosine:
+**How is search fast?** Chroma doesn't compare your question with every card one by one. It uses an index called **HNSW** — like a city's road map with highways and local streets: jump along the highways to the right neighbourhood, then walk the local streets to the exact house. We don't write this; Chroma does it for us.
+
+```mermaid
+flowchart LR
+    Q(["❓ question"]) --> H["🛣️ Top layer · highways<br/>a few far-apart cards<br/>jump to the right neighbourhood"]
+    H -->|"go down a layer"| M["🚗 Middle layer · main roads<br/>more cards<br/>narrow the area"]
+    M -->|"go down a layer"| L["🚶 Bottom layer · local streets<br/>every card<br/>walk to the closest ones"]
+    L --> F(["✅ top-k nearest cards<br/>after visiting only a few"])
+```
+
+We only tell it to use cosine:
 
 ```python
 configuration = {"hnsw": {"space": "cosine"}}
@@ -161,9 +341,14 @@ configuration = {"hnsw": {"space": "cosine"}}
 
 **Seeding** means filling the vector database with our chunks. It's done by [retrieval/seed.py](../../src/rag_eval_platform/retrieval/seed.py), run through `scripts/seed_vector_store.py`:
 
-```
-chunks.jsonl  →  embed every chunk (384 numbers each)  →  store in Chroma
-   40 cards   →         40 meaning codes               →  40 records
+```mermaid
+flowchart LR
+    J["📄 chunks.jsonl<br/>40 cards"] --> EM["🔢 Embedder<br/>all-MiniLM-L6-v2"]
+    EM -->|"40 × 384 numbers"| RA["replace_all()"]
+    RA --> DEL["🗑️ drop old collection"]
+    DEL --> NEW["🆕 create it again<br/>(cosine)"]
+    NEW --> ADD["➕ add in batches"]
+    ADD --> CH[("Chroma<br/>40 records")]
 ```
 
 ### Why "replace all" instead of "add"?
@@ -173,10 +358,30 @@ Analogy: when a shop gets a **new catalogue**, it doesn't paste new pages into t
 
 If we only *added*, then after changing chunk size from 800 to 500, the drawer would contain **both** old and new cards. Search results would be a mess, and the scores would be meaningless.
 
+```mermaid
+flowchart LR
+    subgraph addonly["❌ Only add"]
+        direction TB
+        O1["old 800-char cards"] --- N1["new 500-char cards"]
+        N1 --> X["search returns a mix<br/>of stale + new cards"]
+    end
+    subgraph replace["✅ Replace all"]
+        direction TB
+        N2["new 500-char cards only"] --> Y["search sees one<br/>consistent set"]
+    end
+    addonly ~~~ replace
+```
+
 **Rule:** re-run seeding after changing chunking or the embedding model.
 
 ### Batches — "moving boxes"
 Chroma accepts a limited number of records per request (on our server: 5,461). Like carrying boxes to a moving truck — you can't carry 10,000 at once, so you carry them in trips. Our code asks Chroma for its limit and sends the chunks in batches of that size. With 40 chunks it's one trip, but a big physics library would need many.
+
+```mermaid
+flowchart LR
+    ALL["12,000 chunks<br/>(example)"] --> B1["trip 1<br/>5,461"] & B2["trip 2<br/>5,461"] & B3["trip 3<br/>1,078"]
+    B1 & B2 & B3 --> CH[("Chroma")]
+```
 
 ### The hand-off file
 `chunks.jsonl` sits between ingestion and seeding, like a **delivery note** between two departments. Ingestion writes it; seeding reads it. That means you can re-seed (for example, with a different embedding model) without re-reading all the PDFs.
@@ -194,6 +399,17 @@ if self.reranker is None:
 
 candidates = self.store.search(query_embedding, k=20)  # 2b. fetch 20 candidates
 return self.reranker.rerank(query, candidates, top_n=5)  # 3. senior librarian picks the best 5
+```
+
+```mermaid
+flowchart TD
+    Q["❓ question"] --> EQ["embed_query<br/>(same model as the cards!)"]
+    EQ --> RR{"RAG_RERANK?"}
+    RR -->|"false (default)"| S5["store.search(k = 5)"]
+    S5 --> OUT(["🃏 5 cards"])
+    RR -->|"true"| S20["store.search(k = 20)<br/>candidates"]
+    S20 --> RER["reranker.rerank(top_n = 5)"]
+    RER --> OUT
 ```
 
 Important rule: the question must be embedded with **the same model** as the chunks. Otherwise it's like asking for a book using the Dewey system in a library sorted alphabetically — the "codes" don't match.
@@ -218,6 +434,23 @@ You can't interview every applicant in the country — too slow. But you also do
 1. **Screen** — the vector search picks the 20 most promising cards (fast).
 2. **Interview** — the cross-encoder reads each of the 20 carefully with the question and picks the best 5 (slow, but only 20 times).
 
+```mermaid
+flowchart TD
+    ALL["🗄️ All cards in Chroma"] -->|"⚡ bi-encoder: compare arrows<br/>fast, done in advance"| C20["20 candidates"]
+    C20 -->|"🧐 cross-encoder: read question + card together<br/>slow, but only 20 times"| C5["best 5"]
+    C5 --> LLM["→ the LLM (Phase 3)"]
+```
+
+The same funnel as a **flow**: where the 40 cards of the sample corpus go for one question.
+
+```mermaid
+sankey-beta
+All 40 cards,Vector search shortlist,20
+All 40 cards,Not shortlisted,20
+Vector search shortlist,Re-ranker keeps (top 5),5
+Vector search shortlist,Re-ranker drops,15
+```
+
 That's `rerank_candidates=20` and `top_k=5`. Turn it on with `RAG_RERANK=true`. The model is `cross-encoder/ms-marco-MiniLM-L-6-v2`, downloaded from Hugging Face on first use.
 
 ### What it did for us (notebook section 7)
@@ -227,6 +460,26 @@ That's `rerank_candidates=20` and `top_k=5`. Turn it on with `RAG_RERANK=true`. 
 | Overall | 0.933 → **0.950** | 0.878 → **0.928** | 0.876 → **0.929** |
 | multi_hop | 0.667 → **0.917** | 0.750 → 0.806 | 0.646 → 0.813 |
 | short | 1.000 → **0.938** | 0.896 → 0.938 | 0.923 → 0.938 |
+
+```mermaid
+xychart-beta
+    title "Recall@5 by question type: without re-ranking"
+    x-axis ["overall", "short", "paraphrase", "multi_hop"]
+    y-axis "Recall@5" 0 --> 1
+    bar [0.933, 1.0, 1.0, 0.667]
+    line [0.8, 0.8, 0.8, 0.8]
+```
+
+```mermaid
+xychart-beta
+    title "Recall@5 by question type: with re-ranking"
+    x-axis ["overall", "short", "multi_hop"]
+    y-axis "Recall@5" 0 --> 1
+    bar [0.95, 0.938, 0.917]
+    line [0.8, 0.8, 0.8]
+```
+
+The line is the 0.80 pass mark. Multi-hop jumps from well below it to comfortably above it.
 
 Re-ranking **fixed most multi-hop misses** but **lost one short question**. Nothing is free: this is a trade-off, and without the exam we would never have seen it. Re-ranking is still **off by default** until we decide, with numbers, that the trade is worth it (plus it adds latency).
 
@@ -245,6 +498,35 @@ class VectorStore(Protocol):
 
 Analogy: a **wall socket**. The socket doesn't care if you plug in a lamp, a laptop or a kettle — anything with the right plug works.
 
+```mermaid
+classDiagram
+    direction TB
+    class VectorStore {
+        <<Protocol>>
+        replace_all(chunks, embeddings)
+        search(query_embedding, k) list~SearchResult~
+        count() int
+    }
+    class ChromaVectorStore {
+        real, over HTTP
+    }
+    class FakeStore {
+        unit tests, in memory
+    }
+    class QdrantStore {
+        planned (production)
+    }
+    class Retriever {
+        store: VectorStore
+        embedder: Embedder
+        reranker: Reranker or None
+    }
+    VectorStore <|.. ChromaVectorStore
+    VectorStore <|.. FakeStore
+    VectorStore <|.. QdrantStore
+    Retriever --> VectorStore : only knows the socket
+```
+
 That gives us two superpowers:
 1. **Swap backends** — Qdrant can be added later as another "plug" without touching the retriever.
 2. **Fast, reliable tests** — in unit tests we plug in a **fake** store and a **fake** embedder (tiny pretend versions written in the test file). No Docker, no model download, tests run in about a second.
@@ -261,6 +543,22 @@ We have the same pattern for `Embedder` and `Reranker`.
 | Speed | ~1 second | Slower (network, model loading) |
 | Analogy | **Flight simulator** — practise every emergency safely | **Test flight** — prove the real plane flies |
 | Marked | — | `@pytest.mark.integration` |
+
+```mermaid
+flowchart LR
+    subgraph unit["🎮 Unit tests · flight simulator"]
+        direction TB
+        T1["test"] --> R1["Retriever"] --> FS["FakeStore"] & FE["FakeEmbedder"]
+    end
+    subgraph integ["🛫 Integration tests · test flight"]
+        direction TB
+        T2["test"] --> R2["Retriever"] --> CH[("real Chroma<br/>in Docker")] & ST["real model<br/>MiniLM"]
+    end
+    unit -->|"~1 s, runs anywhere"| OK1["✅"]
+    integ -->|"tool missing?"| SK["⏭️ skip politely"]
+    integ -->|"tool running"| OK2["✅"]
+    unit ~~~ integ
+```
 
 Integration tests **skip politely** when their tool isn't available (for example, Docker not running, or the model package not installed) instead of failing. You saw this: "5 skipped" when Docker was off.
 
@@ -281,6 +579,19 @@ uv sync --all-extras         # + the heavy drawer (PyTorch, models, OpenAI)
 uv sync --all-extras --group notebook   # + Jupyter and pandas
 ```
 
+```mermaid
+flowchart TB
+    subgraph box["🧰 uv sync options"]
+        direction TB
+        CORE["<b>uv sync</b><br/>core: chromadb-client, pypdf, pydantic-settings,<br/>langchain-text-splitters + dev tools"]
+        EXTRA["<b>--all-extras</b><br/>+ sentence-transformers (PyTorch), openai"]
+        GROUPS["<b>--all-groups</b><br/>+ Jupyter, pandas, Streamlit"]
+        CORE --> EXTRA --> GROUPS
+    end
+    CI["GitHub CI"] -->|installs only| CORE
+    YOU["Your Mac"] -->|installs all| GROUPS
+```
+
 If code needs a tool from a drawer you didn't open, you get a friendly message instead of a crash:
 
 > The 'sentence_transformers' package is not installed. Run: uv sync --extra local-embeddings
@@ -298,6 +609,17 @@ That message comes from one small shared helper, [_optional.py](../../src/rag_ev
 3. Grade with the metrics from `metrics.py` (Recall, MRR, NDCG, Precision).
 4. Average: overall **and per question type** (short, paraphrase, multi-hop).
 5. Compare with the **pass marks** from settings.
+
+```mermaid
+flowchart LR
+    G["📋 Golden set<br/>30 questions +<br/>correct books"] --> R["🧑‍💼 Retriever"]
+    R --> CK["🃏 chunk ids<br/>metrics.md#2, metrics.md#0, rag.md#1"]
+    CK --> DOC["📚 book ids, repeats removed<br/>metrics.md, rag.md"]
+    DOC --> M["📐 Recall · MRR · NDCG · Precision<br/>per question"]
+    M --> AVG["📊 averages<br/>overall + per type"]
+    AVG --> TH{"≥ pass marks?"}
+    TH --> REP["📝 reports/retrieval_report.json"]
+```
 
 ### Pass marks (thresholds)
 | Metric | Minimum |
@@ -317,6 +639,22 @@ The command ends with a number that other programs (like CI) can read:
 | **1** | A metric is below its pass mark | 🔴 quality problem |
 | **2** | Couldn't run at all (Chroma down, dataset missing…) | 🟡 setup problem |
 
+```mermaid
+flowchart TD
+    RUN["run_evaluation.py"] --> CAN{"Could it run?<br/>Chroma up, dataset valid…"}
+    CAN -->|no| E2["🟡 exit 2<br/>setup problem"]
+    CAN -->|yes| PASS{"Every metric ≥<br/>its pass mark?"}
+    PASS -->|yes| E0["🟢 exit 0<br/>all good"]
+    PASS -->|no| E1["🔴 exit 1<br/>quality problem"]
+
+    classDef g fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef r fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef y fill:#fef3c7,stroke:#d97706,color:#78350f
+    class E0 g
+    class E1 r
+    class E2 y
+```
+
 Separating 1 from 2 matters: "the librarian failed the exam" and "the exam room was locked" need different fixes.
 
 It also writes the full report to `reports/retrieval_report.json` (ignored by git — it's regenerated every run).
@@ -330,6 +668,17 @@ mrr            0.878   0.70  PASS
 ndcg@k         0.876   0.70  PASS
 precision@k    0.327      -
 ```
+
+```mermaid
+xychart-beta
+    title "Baseline scores vs pass marks"
+    x-axis ["Recall@5", "MRR", "NDCG@5"]
+    y-axis "Score" 0 --> 1
+    bar [0.933, 0.878, 0.876]
+    line [0.8, 0.7, 0.7]
+```
+
+Bars are our scores; the line is the pass mark. (Precision@5, 0.327, has no pass mark; see below why it's low.)
 
 How to read them:
 - **Recall 0.933** — for 93% of the needed books, the librarian brought them within the top 5.
@@ -354,6 +703,21 @@ Open http://localhost:3001 and connect to **`http://chroma:8000`**.
 
 Why `chroma:8000` and not `localhost:8001`? The admin UI runs **inside** Docker, next to Chroma. Inside Docker's private network, containers call each other by **service name** and **inner port** — like colleagues in the same office using internal extension numbers instead of the public phone number.
 
+```mermaid
+flowchart LR
+    subgraph mac["💻 Your Mac"]
+        BR["🌐 Browser"]
+        PY["🐍 Our code"]
+        subgraph net["🐳 Docker private network"]
+            AD["chromadb-admin<br/>:3001 inside"]
+            CH[("chroma<br/>:8000 inside")]
+            AD -->|"http://chroma:8000<br/>internal extension"| CH
+        end
+    end
+    BR -->|"localhost:3001"| AD
+    PY -->|"localhost:8001<br/>public number"| CH
+```
+
 It's great for **browsing** cards and sticky notes. Its search box only looks up a card **by id**, not by meaning.
 
 ### The notebook — "a lab bench"
@@ -369,6 +733,24 @@ On every push, GitHub now runs a third job: **Integration tests (Chroma in Docke
 
 The model tests skip there (no PyTorch in CI, on purpose), but the Chroma tests run against a real database every time.
 
+```mermaid
+sequenceDiagram
+    participant GH as GitHub push
+    participant R as CI runner
+    participant C as Chroma service container
+    GH->>R: start "Integration tests" job
+    R->>C: start chromadb/chroma:1.5.9
+    R->>R: uv sync --locked
+    loop until it answers
+        R->>C: heartbeat?
+        C-->>R: ok
+    end
+    R->>C: pytest -m integration
+    C-->>R: ✅ Chroma tests pass
+    Note over R: model tests ⏭️ skip (no PyTorch)
+    R->>C: remove container 🧹
+```
+
 | CI job | Checks |
 |---|---|
 | Lint, type-check and test | Code style, types, unit tests |
@@ -383,6 +765,19 @@ When we first ran seeding, the output was flooded with lines like `HTTP Request:
 
 `configure_logging()` now sets these chatty libraries (`httpx`, `huggingface_hub`, `sentence_transformers`, `chromadb`, …) to **WARNING**: they still speak up when something is wrong, but stay quiet otherwise. Now seeding prints one clear line:
 
+```mermaid
+flowchart LR
+    subgraph libs["📢 Chatty libraries → WARNING"]
+        L1["httpx"] ~~~ L2["huggingface_hub"] ~~~ L3["chromadb"]
+    end
+    subgraph ours["🗣️ Our code → INFO"]
+        O["rag_eval_platform"]
+    end
+    libs -->|"only problems"| OUT["🖥️ terminal<br/>one JSON line per event"]
+    ours -->|"every useful step"| OUT
+```
+
+
 ```json
 {"level": "INFO", "message": "Vector store seeded", "chunks": 40, "collection": "rag_documents", ...}
 ```
@@ -393,13 +788,19 @@ When we first ran seeding, the output was flooded with lines like `HTTP Request:
 
 Part A explained the *ideas*. Part B walks through the *Python* we wrote, in the order the data travels. For each file: what it is for, the important lines, and the Python tricks it uses.
 
+```mermaid
+flowchart LR
+    subgraph helpers["🧩 Helpers every file uses"]
+        OPT["_optional.py"] ~~~ SET["settings.py"] ~~~ LOG["logging_config.py"]
+    end
+    J["📄 chunks.jsonl"] --> SEED["seed.py"] --> VS["vector_store.py"]
+    CLI["evaluation/cli.py"] --> EV["evaluator.py"] --> RET["retriever.py"]
+    RET --> VS
+    RET -.-> RR["reranker.py"]
+    VS --> CH[("Chroma")]
 ```
-_optional.py ─┐
-settings.py ──┤   (helpers every file uses)
-logging ──────┘
-                                 ┌─────────────── reranker.py
-chunks.jsonl → seed.py → vector_store.py ← retriever.py ← evaluator.py ← evaluation/cli.py
-```
+
+Arrows mean "uses": seeding writes into the vector store, and the evaluator reads from it through the retriever.
 
 Links like [vector_store.py:66-90](../../src/rag_eval_platform/retrieval/vector_store.py#L66-L90) open the exact lines.
 
