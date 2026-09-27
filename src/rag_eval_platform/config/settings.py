@@ -15,7 +15,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ChunkStrategy = Literal["fixed", "recursive", "semantic"]
 EmbeddingProvider = Literal["sentence_transformers", "openai"]
 VectorStoreBackend = Literal["chroma", "qdrant"]
-LlmProvider = Literal["anthropic", "openai"]
+LlmProvider = Literal["ollama", "openai", "anthropic"]
+# "default" sends no reasoning_effort at all (for models that do not support the option).
+ReasoningEffort = Literal["none", "low", "medium", "high", "default"]
 
 # A metric score or threshold in [0, 1].
 Score = Annotated[float, Field(ge=0.0, le=1.0)]
@@ -58,8 +60,15 @@ class Settings(BaseSettings):
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # Generation
-    llm_provider: LlmProvider = "anthropic"
-    llm_model: str = "claude-sonnet-5"
+    # Default: a local open-source model served by Ollama (no API key, no cost).
+    llm_provider: LlmProvider = "ollama"
+    llm_model: str = "qwen3:8b"
+    ollama_base_url: str = "http://localhost:11434/v1"
+    llm_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    llm_max_tokens: int = Field(default=1024, gt=0)
+    llm_timeout_seconds: float = Field(default=120.0, gt=0)
+    # "none" turns off hidden reasoning in thinking models like qwen3: ~4x faster answers.
+    llm_reasoning_effort: ReasoningEffort = "none"
     openai_api_key: SecretStr | None = Field(
         default=None, validation_alias=AliasChoices("OPENAI_API_KEY", "RAG_OPENAI_API_KEY")
     )
