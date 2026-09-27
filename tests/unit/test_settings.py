@@ -16,6 +16,10 @@ SETTINGS_ENV_VARS = (
     "RAG_TOP_K",
     "RAG_VECTOR_STORE",
     "RAG_MIN_FAITHFULNESS",
+    "RAG_LLM_PROVIDER",
+    "RAG_LLM_TEMPERATURE",
+    "RAG_LLM_MAX_TOKENS",
+    "RAG_LLM_REASONING_EFFORT",
 )
 
 
@@ -41,6 +45,18 @@ def test_defaults_load_without_any_environment() -> None:
     assert settings.golden_dataset_path == Path("data/golden_dataset/qa_pairs.json")
     assert settings.openai_api_key is None
     assert settings.anthropic_api_key is None
+
+
+def test_generation_defaults_use_local_ollama() -> None:
+    settings = Settings()
+
+    assert settings.llm_provider == "ollama"
+    assert settings.llm_model == "qwen3:8b"
+    assert settings.ollama_base_url == "http://localhost:11434/v1"
+    assert settings.llm_temperature == 0.0
+    assert settings.llm_max_tokens == 1024
+    assert settings.llm_timeout_seconds == 120.0
+    assert settings.llm_reasoning_effort == "none"
 
 
 def test_default_thresholds_match_evaluation_methodology() -> None:
@@ -99,6 +115,10 @@ def test_settings_are_immutable() -> None:
         ("RAG_MIN_FAITHFULNESS", "1.5"),
         ("RAG_VECTOR_STORE", "pinecone"),
         ("RAG_CHUNK_STRATEGY", "unknown"),
+        ("RAG_LLM_PROVIDER", "gemini"),
+        ("RAG_LLM_TEMPERATURE", "3"),
+        ("RAG_LLM_MAX_TOKENS", "0"),
+        ("RAG_LLM_REASONING_EFFORT", "extreme"),
     ],
 )
 def test_invalid_values_are_rejected(
