@@ -19,7 +19,7 @@ uv run python scripts/run_ingestion.py                   # data/raw -> data/proc
 uv run python scripts/seed_vector_store.py               # embed chunks into Chroma (needs --all-extras)
 uv run python scripts/run_evaluation.py                  # score the golden set; exit 0 pass, 1 below threshold, 2 error
 ollama pull gemma3:12b                                   # the LLM judge for generation evaluation
-uv run python scripts/run_generation_evaluation.py       # judge the answers (~1 min/question); --limit N, --full
+uv run python scripts/run_generation_evaluation.py       # judge the answers (~1 hour for 30); --limit N, --full
 ollama serve && ollama pull qwen3:8b                     # local LLM (native app on macOS for GPU; not in Docker)
 uv run python scripts/ask.py "What does MRR measure?"    # full pipeline: retrieve -> generate -> cited answer
 uv run streamlit run src/rag_eval_platform/playground/app.py   # web playground on localhost:8501: upload PDFs, tune, ask
