@@ -20,6 +20,10 @@ SETTINGS_ENV_VARS = (
     "RAG_LLM_TEMPERATURE",
     "RAG_LLM_MAX_TOKENS",
     "RAG_LLM_REASONING_EFFORT",
+    "RAG_JUDGE_PROVIDER",
+    "RAG_JUDGE_MODEL",
+    "RAG_JUDGE_TEMPERATURE",
+    "RAG_JUDGE_MAX_TOKENS",
 )
 
 
@@ -57,6 +61,35 @@ def test_generation_defaults_use_local_ollama() -> None:
     assert settings.llm_max_tokens == 1024
     assert settings.llm_timeout_seconds == 120.0
     assert settings.llm_reasoning_effort == "none"
+
+
+def test_judge_defaults_use_a_different_local_model() -> None:
+    settings = Settings()
+
+    assert settings.judge_provider == "ollama"
+    assert settings.judge_model == "gemma3:12b"
+    assert settings.judge_model != settings.llm_model
+    assert settings.judge_temperature == 0.0
+    assert settings.judge_max_tokens == 4096
+    assert settings.judge_timeout_seconds == 300.0
+
+
+def test_judge_must_differ_from_the_model_being_evaluated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAG_JUDGE_MODEL", "qwen3:8b")
+
+    with pytest.raises(ValidationError, match="judge"):
+        Settings()
+
+
+def test_same_model_name_on_another_provider_is_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAG_JUDGE_PROVIDER", "openai")
+    monkeypatch.setenv("RAG_JUDGE_MODEL", "qwen3:8b")
+
+    assert Settings().judge_provider == "openai"
 
 
 def test_default_thresholds_match_evaluation_methodology() -> None:
@@ -119,6 +152,9 @@ def test_settings_are_immutable() -> None:
         ("RAG_LLM_TEMPERATURE", "3"),
         ("RAG_LLM_MAX_TOKENS", "0"),
         ("RAG_LLM_REASONING_EFFORT", "extreme"),
+        ("RAG_JUDGE_PROVIDER", "anthropic"),
+        ("RAG_JUDGE_TEMPERATURE", "-1"),
+        ("RAG_JUDGE_MAX_TOKENS", "0"),
     ],
 )
 def test_invalid_values_are_rejected(
