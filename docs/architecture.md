@@ -127,7 +127,8 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | httpx | FastAPI `TestClient` for integration tests | proposed |
 | | Docker / Docker Compose | Local infrastructure (Chroma now); API image later | in use |
 | | chromadb-admin (community image, `ui` profile) | Browse Chroma collections and chunks in a web UI | in use |
-| | Streamlit (`ui` group) | `playground/app.py`: upload PDFs, tune chunking/retrieval/generation, see every step | in use |
+| | Streamlit (`ui` group) | The visual playground: six lazy tabs (Overview + one per phase), upload PDFs, tune every setting, judge an answer | in use |
+| | Plotly (`ui` group) | Animated playground charts: meaning map (2-D/3-D), similarity, re-ranking, funnel, gauges, reports | in use |
 | | JupyterLab + pandas (`notebook` group) | `notebooks/exploration.ipynb`: inspect chunks, ask questions, run experiments | in use |
 | **7. Observability** | Python `logging` (JSON lines) | One structured line per answered question (chunks, citations, tokens, latency) | in use |
 | | Streamlit | Dashboard: scores over time, recent queries, latency | chosen |
