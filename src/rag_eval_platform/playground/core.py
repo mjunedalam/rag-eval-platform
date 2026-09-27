@@ -6,13 +6,17 @@ touched.
 """
 
 import hashlib
+import json
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import fmean
+from typing import Any, Protocol
 
 from rag_eval_platform.config.settings import ChunkStrategy
+from rag_eval_platform.evaluation.citation_validity import CitationValidity
+from rag_eval_platform.evaluation.judge import Judge, JudgeError, JudgeSample, JudgeScores
 from rag_eval_platform.generation.generator import Answer, Generator
 from rag_eval_platform.ingestion.chunking import Chunk, chunk_documents
 from rag_eval_platform.ingestion.embedding import Embedder
@@ -28,6 +32,7 @@ from rag_eval_platform.retrieval.vector_store import SearchResult, VectorStore
 
 PLAYGROUND_COLLECTION = "playground"
 UPLOAD_DIR = Path("data/playground")
+REPORTS_DIR = Path("reports")
 
 
 class UploadError(ValueError):
@@ -62,6 +67,7 @@ class QueryTrace:
     final_results: tuple[SearchResult, ...]  # after re-ranking (same as above if off)
     answer: Answer
     retrieval_ms: float
+    query_embedding: tuple[float, ...] = ()  # the question's vector, for the meaning map
 
 
 def save_uploads(files: Sequence[tuple[str, bytes]], upload_dir: Path) -> UploadResult:
@@ -156,6 +162,7 @@ class RetrievalStep:
     vector_results: tuple[SearchResult, ...]  # straight from vector search
     final_results: tuple[SearchResult, ...]  # after re-ranking (same as above if off)
     retrieval_ms: float
+    query_embedding: tuple[float, ...]
 
 
 def retrieve_step(
@@ -172,14 +179,17 @@ def retrieve_step(
         raise ValueError("question must not be blank")
 
     started = time.perf_counter()
+    query_embedding = tuple(embedder.embed_query(question))
     candidates = top_k if reranker is None else max(rerank_candidates, top_k)
-    vector_results = tuple(store.search(embedder.embed_query(question), k=candidates))
+    vector_results = tuple(store.search(list(query_embedding), k=candidates))
     final_results = (
         vector_results
         if reranker is None
         else tuple(reranker.rerank(question, vector_results, top_n=top_k))
     )
-    return RetrievalStep(vector_results, final_results, (time.perf_counter() - started) * 1000)
+    return RetrievalStep(
+        vector_results, final_results, (time.perf_counter() - started) * 1000, query_embedding
+    )
 
 
 def run_query(
@@ -202,4 +212,88 @@ def run_query(
         rerank_candidates=rerank_candidates,
     )
     answer = generator.generate(question, step.final_results)
-    return QueryTrace(step.vector_results, step.final_results, answer, step.retrieval_ms)
+    return QueryTrace(
+        step.vector_results, step.final_results, answer, step.retrieval_ms, step.query_embedding
+    )
+
+
+class _Exportable(Protocol):
+    def export(self) -> tuple[tuple[Chunk, ...], tuple[tuple[float, ...], ...]]: ...
+
+
+class _CitationChecker(Protocol):
+    def check(self, answer: Answer) -> CitationValidity: ...
+
+
+@dataclass(frozen=True)
+class IndexSnapshot:
+    """Everything stored in the playground collection: chunks and their vectors."""
+
+    chunks: tuple[Chunk, ...]
+    vectors: tuple[tuple[float, ...], ...]
+
+    @property
+    def doc_ids(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(c.doc_id for c in self.chunks))
+
+
+def index_snapshot(store: _Exportable) -> IndexSnapshot:
+    chunks, vectors = store.export()
+    return IndexSnapshot(chunks, vectors)
+
+
+def trace_key(trace: QueryTrace) -> str:
+    """Identifies one answered question, so results tied to it (the judge) can be matched."""
+    parts = (trace.answer.question, trace.answer.text, *(r.chunk.id for r in trace.final_results))
+    return hashlib.sha1(repr(parts).encode(), usedforsecurity=False).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class JudgeResult:
+    scores: JudgeScores
+    citations: CitationValidity
+    judge_ms: float
+    note: str = ""  # why citations were not scored, if they were not
+
+
+def judge_answer(trace: QueryTrace, judge: Judge, checker: _CitationChecker) -> JudgeResult:
+    """Grade one playground answer: faithfulness, relevance and citation validity."""
+    answer = trace.answer
+    if answer.is_refusal:
+        raise ValueError("a refusal makes no claims, so there is nothing to judge")
+    started = time.perf_counter()
+    sample = JudgeSample(
+        question=answer.question,
+        answer=answer.text,
+        contexts=tuple(r.chunk.text for r in trace.final_results),
+        reference="",  # your own documents have no golden answer; not needed by these metrics
+    )
+    scores = judge.score(sample)
+    note = ""
+    try:
+        citations = checker.check(answer)
+    except JudgeError as exc:
+        citations, note = CitationValidity(()), f"Citation verdicts unreadable: {exc}"
+    return JudgeResult(scores, citations, (time.perf_counter() - started) * 1000, note)
+
+
+@dataclass(frozen=True)
+class Reports:
+    retrieval: dict[str, Any] | None
+    generation: dict[str, Any] | None
+
+
+def load_reports(directory: Path) -> Reports:
+    """The saved golden-set reports, or None for each one that is missing or unreadable."""
+    return Reports(
+        _read_json(directory / "retrieval_report.json"),
+        _read_json(directory / "generation_report.json"),
+    )
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
