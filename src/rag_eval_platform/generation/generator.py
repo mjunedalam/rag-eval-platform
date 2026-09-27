@@ -249,39 +249,42 @@ class OpenAICompatibleClient:
     @classmethod
     def from_settings(cls, settings: Settings) -> Self:
         """Connect to the provider selected by ``RAG_LLM_PROVIDER``."""
-        if settings.llm_provider == "anthropic":
-            raise NotImplementedError("anthropic generation is not implemented yet")
-
-        openai = import_optional("openai", extra="openai")
-        if settings.llm_provider == "ollama":
-            client = openai.OpenAI(
-                base_url=settings.ollama_base_url,
-                api_key=OLLAMA_PLACEHOLDER_KEY,
-                timeout=settings.llm_timeout_seconds,
-            )
-            hint = (
-                f"Is Ollama running (`ollama serve`) and is the model pulled "
-                f"(`ollama pull {settings.llm_model}`)?"
-            )
-        else:
-            if settings.openai_api_key is None:
-                raise GenerationError("OPENAI_API_KEY is not set (add it to .env)")
-            client = openai.OpenAI(
-                api_key=settings.openai_api_key.get_secret_value(),
-                timeout=settings.llm_timeout_seconds,
-            )
-            hint = "Check OPENAI_API_KEY and the model name."
-        return cls(
-            client,
+        return cls.connect(
+            settings,
+            provider=settings.llm_provider,
             model=settings.llm_model,
             temperature=settings.llm_temperature,
             max_tokens=settings.llm_max_tokens,
-            hint=hint,
+            timeout=settings.llm_timeout_seconds,
             reasoning_effort=(
                 None
                 if settings.llm_reasoning_effort == "default"
                 else settings.llm_reasoning_effort
             ),
+        )
+
+    @classmethod
+    def connect(
+        cls,
+        settings: Settings,
+        *,
+        provider: str,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        timeout: float,
+        reasoning_effort: str | None = None,
+    ) -> Self:
+        """A client for any model on ``provider`` (e.g. the evaluation judge)."""
+        options, hint = client_options(settings, provider, model, timeout)
+        openai = import_optional("openai", extra="openai")
+        return cls(
+            openai.OpenAI(**options),
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            hint=hint,
+            reasoning_effort=reasoning_effort,
         )
 
     def complete(self, messages: Sequence[Message]) -> Completion:
@@ -325,6 +328,31 @@ class OpenAICompatibleClient:
 
     def _error(self, exc: Exception) -> GenerationError:
         return GenerationError(f"LLM request to model '{self._model}' failed: {exc}. {self._hint}")
+
+
+def client_options(
+    settings: Settings, provider: str, model: str, timeout: float
+) -> tuple[dict[str, Any], str]:
+    """Keyword arguments for an ``openai`` client on ``provider``, plus a fix hint for errors.
+
+    Shared by the sync client above and the async client the RAGAS judge needs.
+    """
+    if provider == "anthropic":
+        raise NotImplementedError("anthropic generation is not implemented yet")
+    if provider == "ollama":
+        hint = (
+            f"Is Ollama running (`ollama serve`) and is the model pulled (`ollama pull {model}`)?"
+        )
+        options = {
+            "base_url": settings.ollama_base_url,
+            "api_key": OLLAMA_PLACEHOLDER_KEY,
+            "timeout": timeout,
+        }
+        return options, hint
+    if settings.openai_api_key is None:
+        raise GenerationError("OPENAI_API_KEY is not set (add it to .env)")
+    options = {"api_key": settings.openai_api_key.get_secret_value(), "timeout": timeout}
+    return options, "Check OPENAI_API_KEY and the model name."
 
 
 def create_generator(settings: Settings) -> Generator:
