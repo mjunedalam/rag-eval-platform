@@ -101,7 +101,7 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | mypy | Static type checking of the protocol interfaces | in use |
 | | pydantic-settings | Typed settings from env / `.env` in `config/settings.py` | in use |
 | **1. Ingestion** | `langchain-text-splitters` | Recursive chunking (fixed-size is our own sliding window) | in use |
-| | pypdf | Extract text and page offsets from PDFs; Markdown/text are read directly | in use |
+| | pypdf + fontTools | Extract text and page offsets from PDFs (fontTools decodes CFF font encodings); Markdown/text are read directly | in use |
 | | Sentence Transformers | Local, free embedding model (default); optional extra `local-embeddings` | in use |
 | | OpenAI Embeddings | Hosted embedding alternative; optional extra `openai` | in use |
 | | tiktoken | Token counts for chunk sizing and cost estimates | proposed |
@@ -109,12 +109,14 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | Qdrant | Production vector store with metadata filtering | chosen |
 | | Sentence Transformers `CrossEncoder` | Optional re-ranker (`RAG_RERANK=true`, MS MARCO MiniLM) | in use |
 | | NumPy | Vector math, similarity checks in tests | chosen |
-| **3. Generation** | Anthropic / OpenAI SDKs (via LangChain chat models) | LLM answer generation with `[n]` citations | chosen |
+| **3. Generation** | Ollama + `qwen3:8b` (local, open-source) | Default LLM: no API key, no cost, data stays local; native app on macOS for GPU | in use |
+| | `openai` SDK (OpenAI-compatible chat API) | One client for Ollama and OpenAI; answers with `[n]` citations | in use |
+| | Anthropic SDK | Claude as an optional hosted provider | chosen, deferred |
 | | LangGraph | Control flow beyond a linear chain (retry, confidence branching); add only when needed | chosen, deferred |
 | **4. Evaluation** | RAGAS | Primary generation metrics: faithfulness, answer relevance, context precision/recall | chosen |
 | | DeepEval | Pytest-style LLM evaluation tests | chosen |
-| | Custom `evaluation/metrics.py` | Deterministic retrieval metrics: Precision@k, Recall@k, MRR, NDCG@k | chosen |
-| | Pandas | Golden dataset and score reports, per-`query_type` breakdowns | chosen |
+| | Custom `evaluation/metrics.py` + `evaluator.py` | Deterministic retrieval metrics (Precision@k, Recall@k, MRR, NDCG@k) and threshold checks | in use |
+| | Pandas | Score tables in the notebook; reports and per-`query_type` breakdowns | in use |
 | **5. CI/CD gate** | GitHub Actions | `ci.yml` (lint, types, unit tests, secret scan) in use; `evaluation_gate.yml` (block merge on regression) chosen | in use |
 | | `astral-sh/setup-uv` action | Install uv and cache dependencies in CI | in use |
 | | pytest-cov | Coverage report in CI | in use |
@@ -124,8 +126,9 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | httpx | FastAPI `TestClient` for integration tests | proposed |
 | | Docker / Docker Compose | Local infrastructure (Chroma now); API image later | in use |
 | | chromadb-admin (community image, `ui` profile) | Browse Chroma collections and chunks in a web UI | in use |
+| | Streamlit (`ui` group) | `playground/app.py`: upload PDFs, tune chunking/retrieval/generation, see every step | in use |
 | | JupyterLab + pandas (`notebook` group) | `notebooks/exploration.ipynb`: inspect chunks, ask questions, run experiments | in use |
-| **7. Observability** | Python `logging` (JSON lines) | Query, latency, cost and eval-run logs | chosen |
+| **7. Observability** | Python `logging` (JSON lines) | One structured line per answered question (chunks, citations, tokens, latency) | in use |
 | | Streamlit | Dashboard: scores over time, recent queries, latency | chosen |
 | | TruLens | Continuous quality tracking with feedback functions | chosen, optional |
 | **8. Security and governance** | Microsoft Presidio | Detect and mask PII at ingestion, before embedding | proposed |
