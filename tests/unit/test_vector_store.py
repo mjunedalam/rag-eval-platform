@@ -36,6 +36,15 @@ class FakeCollection:
     def count(self) -> int:
         return len(self.rows)
 
+    def get(self, include: list[str], limit: int, offset: int) -> dict[str, Any]:
+        items = list(self.rows.items())[offset : offset + limit]
+        return {
+            "ids": [id_ for id_, _ in items],
+            "embeddings": [row[0] for _, row in items],
+            "documents": [row[1] for _, row in items],
+            "metadatas": [row[2] for _, row in items],
+        }
+
     def query(
         self, query_embeddings: list[list[float]], n_results: int, include: list[str]
     ) -> dict[str, Any]:
@@ -195,3 +204,35 @@ def test_malformed_chroma_response_raises() -> None:
 
     with pytest.raises(VectorStoreError, match="Unexpected response"):
         store.search([1.0, 0.0], k=1)
+
+
+class TestExport:
+    def test_returns_every_chunk_and_vector_in_document_order(self) -> None:
+        client = FakeChromaClient(max_batch_size=2)
+        store = ChromaVectorStore(client, "c")  # type: ignore[arg-type]
+        chunks = [
+            Chunk(id="b.md#0", doc_id="b.md", index=0, text="bee", start_index=0),
+            Chunk(id="a.md#1", doc_id="a.md", index=1, text="second", start_index=5, page=2),
+            Chunk(id="a.md#0", doc_id="a.md", index=0, text="first", start_index=0, page=1),
+        ]
+        store.replace_all(chunks, [[0.0, 1.0], [1.0, 0.0], [0.6, 0.8]])
+
+        exported, vectors = store.export()
+
+        assert [c.id for c in exported] == ["a.md#0", "a.md#1", "b.md#0"]
+        assert exported[1] == chunks[1]
+        assert vectors == ((0.6, 0.8), (1.0, 0.0), (0.0, 1.0))
+
+    def test_missing_collection_exports_nothing(self) -> None:
+        store = ChromaVectorStore(FakeChromaClient(), "absent")  # type: ignore[arg-type]
+
+        assert store.export() == ((), ())
+
+    def test_malformed_response_is_a_vector_store_error(self) -> None:
+        client = FakeChromaClient()
+        store = ChromaVectorStore(client, "c")  # type: ignore[arg-type]
+        store.replace_all([Chunk(id="a#0", doc_id="a", index=0, text="t", start_index=0)], [[1.0]])
+        client.collections["c"].rows["a#0"] = ([1.0], "t", {})  # metadata lost
+
+        with pytest.raises(VectorStoreError, match="Unexpected response"):
+            store.export()
