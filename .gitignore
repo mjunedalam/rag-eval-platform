@@ -24,3 +24,6 @@ reports/
 
 # Jupyter autosaves
 .ipynb_checkpoints/
+
+# Playground uploads: your own documents, never committed
+data/playground/
