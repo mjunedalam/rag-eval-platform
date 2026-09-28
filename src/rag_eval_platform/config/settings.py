@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     min_ndcg_at_k: Score = 0.70
     min_faithfulness: Score = 0.85
     min_answer_relevance: Score = 0.80
+    # Evaluation gate: the most a retrieval metric may drop below the committed baseline.
+    gate_max_drop: Score = 0.02
 
     # Observability
     log_level: str = "INFO"

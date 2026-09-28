@@ -17,8 +17,15 @@ from collections.abc import Callable
 
 import streamlit as st
 
+from rag_eval_platform.playground.header import app_css, header_html
 from rag_eval_platform.playground.live import LIVE_CSS
+from rag_eval_platform.playground.session_metrics import (
+    session_kpis,
+    session_points,
+    session_summary,
+)
 from rag_eval_platform.playground.shared import (
+    HISTORY,
     TAB_KEY,
     TAB_LABELS,
     TRACE,
@@ -34,6 +41,7 @@ from rag_eval_platform.playground.tabs import (
     chat_panel,
     embed,
     evaluate,
+    gate,
     generate,
     ingest,
     overview,
@@ -47,24 +55,27 @@ RENDERERS: dict[str, Callable[[TabContext], None]] = {
     "③ Retrieve": retrieve.render,
     "④ Generate": generate.render,
     "⑤ Evaluate": evaluate.render,
+    "⑥ Gate": gate.render,
 }
 
 
 st.set_page_config(
     page_title="RAG Playground", page_icon="📚", layout="wide", initial_sidebar_state="collapsed"
 )
-# Compact header, so the Overview (all phases at once) fits one screen without scrolling.
-st.markdown(
-    "<style>.block-container{padding-top:2.6rem;padding-bottom:0.5rem}"
-    "h1{font-size:1.9rem !important;padding:0 0 0.2rem 0 !important}</style>" + LIVE_CSS,
-    unsafe_allow_html=True,
-)
-st.title("RAG Playground")
+# Theme in .streamlit/config.toml; APP_CSS adds cards, pills and a compact header, so the
+# Overview (all phases at once) fits one screen without scrolling.
+# st.html applies style-only HTML without Markdown parsing and without taking up space.
+# Colours follow the light or dark theme (⋮ → Settings) through CSS light-dark().
+st.html(app_css() + LIVE_CSS)
+title_column, status_column = st.columns([1, 3], vertical_alignment="center")
+title_column.title("RAG Playground")
 
 available_models = ollama_models(settings.ollama_base_url)
 options = sidebar(available_models)
-store = service_status(available_models)
+store, pills = service_status(available_models)
 snapshot = current_snapshot(store)
+kpis = session_kpis(session_summary(session_points(st.session_state.get(HISTORY, ()))))
+status_column.markdown(header_html(pills, kpis), unsafe_allow_html=True)
 
 chat_column, dashboard_column = st.columns([32, 68], gap="medium")
 with chat_column:

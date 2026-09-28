@@ -100,3 +100,36 @@ def test_invalid_golden_dataset_returns_2(tmp_path: Path, monkeypatch: pytest.Mo
     use_retriever(monkeypatch, "forces.md")
 
     assert cli.main(["--golden", str(tmp_path / "missing.json")]) == 2
+
+
+def test_save_baseline_writes_the_report_and_fingerprint(
+    golden: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    use_retriever(monkeypatch, "forces.md")
+    monkeypatch.setattr(cli, "rebuild_index_from_settings", lambda settings: 1)
+    (tmp_path / "data" / "raw").mkdir(parents=True)
+    (tmp_path / "data" / "raw" / "forces.md").write_text("F = ma", encoding="utf-8")
+
+    exit_code = cli.main(["--golden", str(golden), "--report", str(tmp_path / "r.json"),
+                          "--save-baseline"])  # fmt: skip
+
+    assert exit_code == 0
+    saved = json.loads((tmp_path / "baselines" / "retrieval.json").read_text(encoding="utf-8"))
+    assert saved["report"]["overall"]["recall"] == 1.0
+    assert len(saved["fingerprint"]["golden_sha256"]) == 64
+
+
+def test_save_baseline_rebuilds_the_index_first_but_a_plain_run_does_not(
+    golden: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    use_retriever(monkeypatch, "forces.md")
+    (tmp_path / "data" / "raw").mkdir(parents=True)
+    rebuilt: list[object] = []
+    monkeypatch.setattr(cli, "rebuild_index_from_settings", rebuilt.append)
+    base = ["--golden", str(golden), "--report", str(tmp_path / "r.json")]
+
+    cli.main(base)
+    assert rebuilt == []
+
+    cli.main([*base, "--save-baseline"])
+    assert len(rebuilt) == 1

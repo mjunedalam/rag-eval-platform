@@ -14,14 +14,18 @@ from pathlib import Path
 from rag_eval_platform._optional import OptionalDependencyError
 from rag_eval_platform.config.logging_config import configure_logging
 from rag_eval_platform.config.settings import get_settings
+from rag_eval_platform.evaluation.baselines import RETRIEVAL_BASELINE, save_baseline
 from rag_eval_platform.evaluation.evaluator import (
     RetrievalReport,
     RetrievalThresholds,
     evaluate_retrieval,
     report_to_dict,
 )
+from rag_eval_platform.evaluation.fingerprint import current_fingerprint
+from rag_eval_platform.evaluation.gate_runner import rebuild_index_from_settings
 from rag_eval_platform.evaluation.golden_dataset import GoldenDatasetError, load_golden_dataset
 from rag_eval_platform.ingestion.embedding import EmbeddingError
+from rag_eval_platform.ingestion.loaders import DocumentLoadError
 from rag_eval_platform.retrieval.retriever import create_retriever
 from rag_eval_platform.retrieval.vector_store import VectorStoreError
 
@@ -37,10 +41,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Evaluate retrieval on the golden dataset.")
     parser.add_argument("--golden", type=Path, default=settings.golden_dataset_path)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT_PATH)
+    parser.add_argument(
+        "--save-baseline",
+        action="store_true",
+        help=f"also save as {RETRIEVAL_BASELINE} (commit it)",
+    )
     args = parser.parse_args(argv)
 
     try:
         examples = load_golden_dataset(args.golden)
+        if args.save_baseline:  # score an index that matches the fingerprint we stamp
+            rebuild_index_from_settings(settings)
         report = evaluate_retrieval(
             examples,
             create_retriever(settings),
@@ -49,6 +60,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     except (
         GoldenDatasetError,
+        DocumentLoadError,
         VectorStoreError,
         EmbeddingError,
         OptionalDependencyError,
@@ -58,6 +70,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report_to_dict(report), indent=2), encoding="utf-8")
+    if args.save_baseline:
+        used = settings.model_copy(update={"golden_dataset_path": args.golden})
+        save_baseline(RETRIEVAL_BASELINE, report_to_dict(report), current_fingerprint(used))
+        print(f"Saved the retrieval baseline to {RETRIEVAL_BASELINE}; commit it.")
     print(format_report(report))
     logger.info(
         "Retrieval evaluation finished",

@@ -10,8 +10,13 @@ from rag_eval_platform.evaluation.judge import JudgeError
 from rag_eval_platform.generation.generator import GenerationError
 from rag_eval_platform.playground import charts
 from rag_eval_platform.playground.core import REPORTS_DIR, judge_answer, load_reports, trace_key
+from rag_eval_platform.playground.header import panel_title_html
 from rag_eval_platform.playground.query_visuals import hit_vs_faithfulness, verdict_dot
+from rag_eval_platform.playground.session_metrics import (
+    session_points,
+)
 from rag_eval_platform.playground.shared import (
+    HISTORY,
     TabContext,
     animated_chart,
     load_judge,
@@ -23,11 +28,27 @@ from rag_eval_platform.playground.shared import (
 
 def render(ctx: TabContext) -> None:
     show_pipeline("Evaluate", ctx)
+    _session()
     judge_col, reports_col = st.columns(2, gap="large")
     with judge_col:
         _judge_this_answer(ctx)
     with reports_col:
         _golden_reports()
+
+
+def _session() -> None:
+    """How this conversation is going: time, coverage and grounding for every question."""
+    points = session_points(st.session_state.get(HISTORY, ()))
+    if not points:
+        return
+    st.markdown(panel_title_html("This session", "health"), unsafe_allow_html=True)
+    time_col, quality_col = st.columns(2, gap="large")
+    time_col.plotly_chart(charts.session_time_chart(points), key="session-time",
+                          config=charts.CHART_CONFIG)  # fmt: skip
+    quality_col.plotly_chart(charts.session_quality_chart(points), key="session-quality",
+                             config=charts.CHART_CONFIG)  # fmt: skip
+    st.caption("Coverage and grounding are instant word-level checks on every answer; the "
+               "judge below grades one answer with a second model.")  # fmt: skip
 
 
 def _judge_this_answer(ctx: TabContext) -> None:

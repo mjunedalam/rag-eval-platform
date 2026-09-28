@@ -8,3 +8,31 @@ fileWatcherType = "none"
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+# Shared by both themes: coral accent (not Streamlit red), fonts, rounded corners.
+# Switch between light and dark in the app's ⋮ menu → Settings → Theme ("System" follows
+# your OS); the app's own colours follow via st.context.theme (playground/header.py).
+primaryColor = "#d97757"
+baseRadius = "0.65rem"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap"
+chartCategoricalColors = ["#2563eb", "#d97757", "#16a34a", "#7c3aed", "#0891b2", "#ca8a04"]
+
+[theme.light]
+# Warm, Claude-like light theme: soft off-white background.
+primaryColor = "#d97757"
+backgroundColor = "#faf9f5"
+secondaryBackgroundColor = "#f0eee6"
+textColor = "#1f1e1d"
+linkColor = "#c15f3c"
+borderColor = "#e5e2d9"
+
+[theme.dark]
+# Warm dark theme: charcoal background, off-white text, same coral accent.
+primaryColor = "#d97757"
+backgroundColor = "#1f1e1d"
+secondaryBackgroundColor = "#2c2b28"
+textColor = "#f5f4ef"
+linkColor = "#e8906f"
+borderColor = "#3d3c38"

@@ -5,12 +5,15 @@ import pytest
 pytest.importorskip("plotly")
 
 from rag_eval_platform.playground import charts
+from rag_eval_platform.playground.gate_view import TypeCompare
 from rag_eval_platform.playground.query_visuals import (
     INVALID_COLOR,
+    YES_COLOR,
     PromptBlock,
     RerankMove,
     SimilarityRow,
 )
+from rag_eval_platform.playground.session_metrics import SessionPoint
 from rag_eval_platform.playground.visuals import ChunkSpan, MapPoint, SizeBin
 
 ROWS = (
@@ -129,3 +132,43 @@ def test_per_type_chart_never_uses_the_fail_colour() -> None:
     )
 
     assert all(t.marker.color not in (None, INVALID_COLOR) for t in fig.data)
+
+
+def test_type_compare_chart_has_a_before_and_a_now_series() -> None:
+    fig = charts.type_compare_chart(
+        [TypeCompare("short", "recall", 0.93, 0.8), TypeCompare("short", "mrr", None, 0.7)]
+    )
+
+    assert [trace.name for trace in fig.data] == ["baseline", "now"]
+
+
+def test_gauge_can_show_a_failed_check_above_its_threshold() -> None:
+    dropped = charts.gauge_chart("mrr", 0.84, 0.70, passed=False)  # failed on max drop
+
+    assert dropped.data[0].gauge.bar.color == INVALID_COLOR
+    assert charts.gauge_chart("mrr", 0.84, 0.70).data[0].gauge.bar.color == YES_COLOR
+
+
+def _points() -> tuple[SessionPoint, ...]:
+    return (
+        SessionPoint(1, "Q1?", 3.5, 20.0, 1.0, 0.9, refused=False, feedback=1),
+        SessionPoint(2, "Q2?", 1.0, None, None, None, refused=True, feedback=None),
+    )
+
+
+def test_session_time_chart_marks_refusals() -> None:
+    fig = charts.session_time_chart(_points())
+
+    assert list(fig.data[0].y) == [3.5, 1.0]
+    assert fig.data[0].marker.color[1] == charts.MUTED  # the refusal is greyed out
+
+
+def test_session_quality_chart_has_coverage_and_grounding_lines() -> None:
+    fig = charts.session_quality_chart(_points())
+
+    assert [t.name for t in fig.data] == ["citation coverage", "grounding"]
+    assert list(fig.data[0].y) == [1.0, None]  # a gap, not a zero, for the refusal
+
+
+def test_charts_share_the_app_font() -> None:
+    assert "Inter" in charts.session_time_chart(_points()).layout.font.family

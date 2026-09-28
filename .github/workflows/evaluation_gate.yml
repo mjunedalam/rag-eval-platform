@@ -1,17 +1,88 @@
-# Placeholder until the evaluation phase: will run the golden dataset on every
-# pull request and block the merge when a metric falls below its threshold
-# (see docs/evaluation_methodology.md). Manual trigger only for now.
+# Evaluation gate: every pull request is scored against the golden dataset.
+# Retrieval is evaluated live (CPU embeddings); generation scores come from the committed
+# baselines/generation.json, which must be fresh. See docs/learning/phase-5.md.
+# To block merges, mark "Evaluate against golden dataset" as a required status check in
+# the repository's branch protection settings.
 name: Evaluation gate
 
 on:
+  pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: write
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   evaluate:
     name: Evaluate against golden dataset
     runs-on: ubuntu-latest
+    services:
+      chroma:
+        # Same image and version as docker/docker-compose.yml
+        image: chromadb/chroma:1.5.9
+        ports:
+          - 8001:8000
+    env:
+      RAG_CHROMA_HOST: localhost
+      RAG_CHROMA_PORT: "8001"
+      HF_HUB_DISABLE_TELEMETRY: "1"
     steps:
-      - run: echo "Evaluation gate not implemented yet."
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Install dependencies (CPU embeddings)
+        run: uv sync --locked --extra local-embeddings
+
+      - name: Cache embedding models
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ hashFiles('src/rag_eval_platform/config/settings.py') }}
+
+      - name: Wait for Chroma
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8001/api/v2/heartbeat && exit 0
+            sleep 2
+          done
+          echo "Chroma did not become ready" && exit 1
+
+      - name: Run the gate
+        run: uv run python scripts/run_gate.py --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evaluation-reports
+          path: reports/
+          if-no-files-found: ignore
+
+      - name: Comment on the pull request
+        # Forks get a read-only token; their job summary still has the table.
+        if: >-
+          always() && github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          hashFiles('reports/gate_summary.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- rag-eval-gate -->")) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" \
+              -F body=@reports/gate_summary.md
+          else
+            gh pr comment "$PR" --body-file reports/gate_summary.md
+          fi

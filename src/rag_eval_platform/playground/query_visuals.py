@@ -2,7 +2,7 @@
 the prompt, the answer's citations, timings and the judge's verdicts."""
 
 import html
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from statistics import fmean
 from typing import Any, Literal
@@ -10,6 +10,7 @@ from typing import Any, Literal
 from rag_eval_platform.generation.generator import CITATION_PATTERN, Answer
 from rag_eval_platform.generation.prompt_templates import SYSTEM_PROMPT
 from rag_eval_platform.playground.core import JudgeResult, QueryTrace
+from rag_eval_platform.playground.streaming import fade_markdown_text, fade_style, progress_at
 from rag_eval_platform.playground.visuals import dot_text
 from rag_eval_platform.retrieval.vector_store import SearchResult
 
@@ -147,17 +148,24 @@ def spans_html(spans: tuple[AnswerSpan, ...]) -> str:
     )
 
 
-def spans_markdown(spans: tuple[AnswerSpan, ...]) -> str:
+def spans_markdown(spans: tuple[AnswerSpan, ...], levels: Sequence[tuple[int, float]] = ()) -> str:
     """The answer as Markdown (headings, lists, tables) with coloured citation chips.
 
     Only ``&`` and ``<`` are escaped: that is enough to keep any HTML from the model inert,
-    while Markdown syntax, including ``>`` for quotes, still renders.
+    while Markdown syntax, including ``>`` for quotes, still renders. ``levels`` fades the
+    newest words while an answer is being written (see streaming.fade_levels).
     """
-    return "".join(
-        span.text.replace("&", "&amp;").replace("<", "&lt;") if span.number is None
-        else _chip(span)
-        for span in spans
-    )  # fmt: skip
+    out, position = [], 0
+    for span in spans:
+        if span.number is None:
+            out.append(fade_markdown_text(span.text, position, levels))
+        else:
+            progress = progress_at(position, levels)
+            chip = _chip(span)
+            out.append(chip if progress is None or progress >= 1
+                       else f'<span style="{fade_style(progress)}">{chip}</span>')  # fmt: skip
+        position += len(span.text)
+    return "".join(out)
 
 
 def timing_rows(trace: QueryTrace, judged: JudgeResult | None) -> tuple[tuple[str, float], ...]:

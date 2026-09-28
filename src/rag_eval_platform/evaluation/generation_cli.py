@@ -18,7 +18,10 @@ from pathlib import Path
 from rag_eval_platform._optional import OptionalDependencyError
 from rag_eval_platform.config.logging_config import configure_logging
 from rag_eval_platform.config.settings import Settings, get_settings
+from rag_eval_platform.evaluation.baselines import GENERATION_BASELINE, save_baseline
 from rag_eval_platform.evaluation.citation_validity import create_citation_checker
+from rag_eval_platform.evaluation.fingerprint import current_fingerprint
+from rag_eval_platform.evaluation.gate_runner import rebuild_index_from_settings
 from rag_eval_platform.evaluation.generation_evaluator import (
     GenerationReport,
     GenerationSummary,
@@ -30,6 +33,7 @@ from rag_eval_platform.evaluation.golden_dataset import GoldenDatasetError, load
 from rag_eval_platform.evaluation.judge import Judge, JudgeError, RagasJudge
 from rag_eval_platform.generation.generator import GenerationError
 from rag_eval_platform.ingestion.embedding import EmbeddingError, create_embedder
+from rag_eval_platform.ingestion.loaders import DocumentLoadError
 from rag_eval_platform.pipeline import create_pipeline
 from rag_eval_platform.retrieval.vector_store import VectorStoreError
 
@@ -39,6 +43,7 @@ DEFAULT_REPORT_PATH = Path("reports/generation_report.json")
 EXIT_PASSED, EXIT_BELOW_THRESHOLD, EXIT_ERROR = 0, 1, 2
 _KNOWN_ERRORS = (
     GoldenDatasetError,
+    DocumentLoadError,
     VectorStoreError,
     EmbeddingError,
     GenerationError,
@@ -60,10 +65,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT_PATH)
     parser.add_argument("--limit", type=_positive_int, help="score only the first N questions")
     parser.add_argument("--full", action="store_true", help="add context precision and recall")
+    parser.add_argument(
+        "--save-baseline",
+        action="store_true",
+        help=f"also save as {GENERATION_BASELINE} (commit it)",
+    )
     args = parser.parse_args(argv)
+    if args.save_baseline and args.limit is not None:
+        parser.error("--save-baseline needs every golden question; drop --limit")
 
     try:
         examples = load_golden_dataset(args.golden)[: args.limit]
+        if args.save_baseline:  # answer from an index that matches the fingerprint we stamp
+            rebuild_index_from_settings(settings)
         report = evaluate_generation(
             examples,
             create_pipeline(settings),
@@ -77,8 +91,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_ERROR
 
     args.report.parent.mkdir(parents=True, exist_ok=True)
-    report_json = json.dumps(generation_report_to_dict(report), indent=2)
+    used = settings.model_copy(update={"golden_dataset_path": args.golden})
+    report_data = generation_report_to_dict(report)
+    try:  # record what the scores depend on, so the report can be adopted as a baseline
+        report_data["fingerprint"] = current_fingerprint(used).to_dict()
+    except FileNotFoundError:
+        logger.warning("Corpus folder not found; the report has no fingerprint")
+    report_json = json.dumps(report_data, indent=2)
     args.report.write_text(report_json, encoding="utf-8")
+    if args.save_baseline:
+        save_baseline(GENERATION_BASELINE, report_data, current_fingerprint(used))
+        print(f"Saved the generation baseline to {GENERATION_BASELINE}; commit it.")
     print(format_generation_report(report))
     logger.info(
         "Generation evaluation finished",

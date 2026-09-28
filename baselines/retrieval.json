@@ -1,0 +1,615 @@
+{
+  "fingerprint": {
+    "generator_model": "qwen3:8b",
+    "llm_temperature": 0.0,
+    "llm_reasoning_effort": "none",
+    "prompt_version": "v1",
+    "judge_model": "gemma3:12b",
+    "citation_prompt_version": "v1",
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "chunk_strategy": "recursive",
+    "chunk_size": 800,
+    "chunk_overlap": 100,
+    "top_k": 5,
+    "rerank": false,
+    "rerank_candidates": 0,
+    "reranker_model": "",
+    "golden_sha256": "bf6a962feac217abe84e4cd663080db73b219ba048bfb548e4a91356c9d506d4",
+    "corpus_sha256": "ac41822e765fe4f8140e3de14148505f111837122664690aadbaee294231df23"
+  },
+  "report": {
+    "k": 5,
+    "passed": true,
+    "failures": [],
+    "thresholds": {
+      "min_recall_at_k": 0.8,
+      "min_mrr": 0.7,
+      "min_ndcg_at_k": 0.7
+    },
+    "overall": {
+      "precision": 0.3266666666666666,
+      "recall": 0.9333333333333333,
+      "mrr": 0.8777777777777778,
+      "ndcg": 0.8756668192017474
+    },
+    "by_query_type": {
+      "short": {
+        "precision": 0.309375,
+        "recall": 1.0,
+        "mrr": 0.8958333333333334,
+        "ndcg": 0.9226162191964322
+      },
+      "paraphrase": {
+        "precision": 0.32708333333333334,
+        "recall": 1.0,
+        "mrr": 0.9375,
+        "ndcg": 0.9538662191964322
+      },
+      "multi_hop": {
+        "precision": 0.37222222222222223,
+        "recall": 0.6666666666666666,
+        "mrr": 0.75,
+        "ndcg": 0.6462025525563416
+      }
+    },
+    "examples": [
+      {
+        "example_id": "overview-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "rag_overview.md"
+        ],
+        "retrieved_doc_ids": [
+          "rag_overview.md",
+          "generation_metrics.md",
+          "production_observability.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "overview-002",
+        "query_type": "paraphrase",
+        "relevant_doc_ids": [
+          "rag_overview.md"
+        ],
+        "retrieved_doc_ids": [
+          "rag_overview.md",
+          "retrieval_metrics.md",
+          "production_observability.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "chunking-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "chunking_strategies.md"
+        ],
+        "retrieved_doc_ids": [
+          "chunking_strategies.md",
+          "cost_and_latency.md",
+          "prompting_with_citations.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "chunking-002",
+        "query_type": "paraphrase",
+        "relevant_doc_ids": [
+          "chunking_strategies.md"
+        ],
+        "retrieved_doc_ids": [
+          "chunking_strategies.md",
+          "security_governance.md",
+          "prompting_with_citations.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "chunking-003",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "chunking_strategies.md"
+        ],
+        "retrieved_doc_ids": [
+          "chunking_strategies.md",
+          "vector_databases.md",
+          "rag_overview.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "embeddings-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "embeddings.md"
+        ],
+        "retrieved_doc_ids": [
+          "embeddings.md",
+          "rag_overview.md",
+          "golden_datasets.md",
+          "reranking.md"
+        ],
+        "scores": {
+          "precision": 0.25,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "embeddings-002",
+        "query_type": "paraphrase",
+        "relevant_doc_ids": [
+          "embeddings.md"
+        ],
+        "retrieved_doc_ids": [
+          "embeddings.md",
+          "reranking.md",
+          "retrieval_metrics.md",
+          "rag_overview.md",
+          "vector_databases.md"
+        ],
+        "scores": {
+          "precision": 0.2,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "vectordb-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "vector_databases.md"
+        ],
+        "retrieved_doc_ids": [
+          "retrieval_metrics.md",
+          "vector_databases.md",
+          "production_observability.md",
+          "llm_as_judge.md",
+          "rag_overview.md"
+        ],
+        "scores": {
+          "precision": 0.2,
+          "recall": 1.0,
+          "mrr": 0.5,
+          "ndcg": 0.6309297535714575
+        }
+      },
+      {
+        "example_id": "vectordb-002",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "vector_databases.md"
+        ],
+        "retrieved_doc_ids": [
+          "vector_databases.md",
+          "generation_metrics.md",
+          "cost_and_latency.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "rerank-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "reranking.md"
+        ],
+        "retrieved_doc_ids": [
+          "reranking.md",
+          "rag_overview.md",
+          "embeddings.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "rerank-002",
+        "query_type": "paraphrase",
+        "relevant_doc_ids": [
+          "reranking.md"
+        ],
+        "retrieved_doc_ids": [
+          "reranking.md",
+          "embeddings.md",
+          "vector_databases.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "retrieval-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "retrieval_metrics.md"
+        ],
+        "retrieved_doc_ids": [
+          "retrieval_metrics.md",
+          "embeddings.md",
+          "reranking.md",
+          "generation_metrics.md"
+        ],
+        "scores": {
+          "precision": 0.25,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "retrieval-002",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "retrieval_metrics.md"
+        ],
+        "retrieved_doc_ids": [
+          "retrieval_metrics.md",
+          "vector_databases.md",
+          "generation_metrics.md",
+          "ci_evaluation_gates.md"
+        ],
+        "scores": {
+          "precision": 0.25,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "retrieval-003",
+        "query_type": "paraphrase",
+        "relevant_doc_ids": [
+          "retrieval_metrics.md"
+        ],
+        "retrieved_doc_ids": [
+          "retrieval_metrics.md",
+          "reranking.md"
+        ],
+        "scores": {
+          "precision": 0.5,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "generation-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "generation_metrics.md"
+        ],
+        "retrieved_doc_ids": [
+          "rag_overview.md",
+          "generation_metrics.md",
+          "production_observability.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 0.5,
+          "ndcg": 0.6309297535714575
+        }
+      },
+      {
+        "example_id": "generation-002",
+        "query_type": "paraphrase",
+        "relevant_doc_ids": [
+          "generation_metrics.md"
+        ],
+        "retrieved_doc_ids": [
+          "generation_metrics.md",
+          "llm_as_judge.md",
+          "prompting_with_citations.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "judge-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "llm_as_judge.md"
+        ],
+        "retrieved_doc_ids": [
+          "llm_as_judge.md",
+          "generation_metrics.md",
+          "ci_evaluation_gates.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "golden-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "golden_datasets.md"
+        ],
+        "retrieved_doc_ids": [
+          "retrieval_metrics.md",
+          "chunking_strategies.md",
+          "golden_datasets.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 0.3333333333333333,
+          "ndcg": 0.5
+        }
+      },
+      {
+        "example_id": "golden-002",
+        "query_type": "paraphrase",
+        "relevant_doc_ids": [
+          "golden_datasets.md"
+        ],
+        "retrieved_doc_ids": [
+          "ci_evaluation_gates.md",
+          "golden_datasets.md",
+          "retrieval_metrics.md",
+          "llm_as_judge.md"
+        ],
+        "scores": {
+          "precision": 0.25,
+          "recall": 1.0,
+          "mrr": 0.5,
+          "ndcg": 0.6309297535714575
+        }
+      },
+      {
+        "example_id": "gate-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "ci_evaluation_gates.md"
+        ],
+        "retrieved_doc_ids": [
+          "ci_evaluation_gates.md",
+          "llm_as_judge.md",
+          "production_observability.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "observability-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "production_observability.md"
+        ],
+        "retrieved_doc_ids": [
+          "production_observability.md",
+          "rag_overview.md",
+          "golden_datasets.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "cost-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "cost_and_latency.md"
+        ],
+        "retrieved_doc_ids": [
+          "cost_and_latency.md",
+          "reranking.md",
+          "production_observability.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "security-001",
+        "query_type": "paraphrase",
+        "relevant_doc_ids": [
+          "security_governance.md"
+        ],
+        "retrieved_doc_ids": [
+          "security_governance.md",
+          "prompting_with_citations.md",
+          "production_observability.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "citations-001",
+        "query_type": "short",
+        "relevant_doc_ids": [
+          "prompting_with_citations.md"
+        ],
+        "retrieved_doc_ids": [
+          "prompting_with_citations.md",
+          "generation_metrics.md",
+          "rag_overview.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "multihop-001",
+        "query_type": "multi_hop",
+        "relevant_doc_ids": [
+          "vector_databases.md",
+          "security_governance.md"
+        ],
+        "retrieved_doc_ids": [
+          "security_governance.md",
+          "vector_databases.md",
+          "reranking.md",
+          "embeddings.md",
+          "rag_overview.md"
+        ],
+        "scores": {
+          "precision": 0.4,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "multihop-002",
+        "query_type": "multi_hop",
+        "relevant_doc_ids": [
+          "reranking.md",
+          "retrieval_metrics.md"
+        ],
+        "retrieved_doc_ids": [
+          "retrieval_metrics.md",
+          "reranking.md",
+          "generation_metrics.md"
+        ],
+        "scores": {
+          "precision": 0.6666666666666666,
+          "recall": 1.0,
+          "mrr": 1.0,
+          "ndcg": 1.0
+        }
+      },
+      {
+        "example_id": "multihop-003",
+        "query_type": "multi_hop",
+        "relevant_doc_ids": [
+          "ci_evaluation_gates.md",
+          "llm_as_judge.md"
+        ],
+        "retrieved_doc_ids": [
+          "ci_evaluation_gates.md",
+          "generation_metrics.md",
+          "rag_overview.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 0.5,
+          "mrr": 1.0,
+          "ndcg": 0.6131471927654584
+        }
+      },
+      {
+        "example_id": "multihop-004",
+        "query_type": "multi_hop",
+        "relevant_doc_ids": [
+          "production_observability.md",
+          "golden_datasets.md"
+        ],
+        "retrieved_doc_ids": [
+          "production_observability.md",
+          "ci_evaluation_gates.md",
+          "rag_overview.md"
+        ],
+        "scores": {
+          "precision": 0.3333333333333333,
+          "recall": 0.5,
+          "mrr": 1.0,
+          "ndcg": 0.6131471927654584
+        }
+      },
+      {
+        "example_id": "multihop-005",
+        "query_type": "multi_hop",
+        "relevant_doc_ids": [
+          "vector_databases.md",
+          "cost_and_latency.md"
+        ],
+        "retrieved_doc_ids": [
+          "chunking_strategies.md",
+          "generation_metrics.md",
+          "retrieval_metrics.md",
+          "golden_datasets.md"
+        ],
+        "scores": {
+          "precision": 0.0,
+          "recall": 0.0,
+          "mrr": 0.0,
+          "ndcg": 0.0
+        }
+      },
+      {
+        "example_id": "multihop-006",
+        "query_type": "multi_hop",
+        "relevant_doc_ids": [
+          "prompting_with_citations.md",
+          "generation_metrics.md"
+        ],
+        "retrieved_doc_ids": [
+          "rag_overview.md",
+          "generation_metrics.md",
+          "retrieval_metrics.md",
+          "prompting_with_citations.md"
+        ],
+        "scores": {
+          "precision": 0.5,
+          "recall": 1.0,
+          "mrr": 0.5,
+          "ndcg": 0.6509209298071326
+        }
+      }
+    ]
+  }
+}

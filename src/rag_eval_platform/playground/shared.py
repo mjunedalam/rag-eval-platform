@@ -27,6 +27,8 @@ from rag_eval_platform.playground.core import (
     index_snapshot,
     trace_key,
 )
+from rag_eval_platform.playground.gate_view import GATE_PREVIEW_COLLECTION
+from rag_eval_platform.playground.header import Pill
 from rag_eval_platform.playground.visuals import PipelineStats, pipeline_dot
 from rag_eval_platform.retrieval.reranker import CrossEncoderReranker
 from rag_eval_platform.retrieval.vector_store import ChromaVectorStore, VectorStoreError
@@ -40,8 +42,9 @@ FIRST_OUTPUT_WAIT = "first_output_wait"
 HISTORY, PENDING_REPLACE = "history", "pending_replace"
 FRAMES, FRAME_SECONDS = 8, 0.05
 TAB_LABELS = [
-    "Overview", "① Ingest", "② Embed", "③ Retrieve", "④ Generate", "⑤ Evaluate",
+    "Overview", "① Ingest", "② Embed", "③ Retrieve", "④ Generate", "⑤ Evaluate", "⑥ Gate",
 ]  # fmt: skip
+GATE_RUN = "gate_run"  # the what-if gate's result, saved before the next st.* call
 
 
 @dataclass(frozen=True)
@@ -93,6 +96,11 @@ def load_embedder(model_name: str) -> SentenceTransformerEmbedder:
 @st.cache_resource(show_spinner="Loading the re-ranker...")
 def load_reranker(model_name: str) -> CrossEncoderReranker:
     return CrossEncoderReranker.from_pretrained(model_name)
+
+
+@st.cache_resource(show_spinner=False)
+def connect_gate_store(host: str, port: int) -> ChromaVectorStore:
+    return ChromaVectorStore.connect(host, port, GATE_PREVIEW_COLLECTION)
 
 
 @st.cache_resource(show_spinner=False)
@@ -192,20 +200,22 @@ def sidebar(models: list[str] | None) -> Options:
                    model, effort, temperature, slow_motion, answer_style)  # fmt: skip
 
 
-def service_status(models: list[str] | None) -> ChromaVectorStore | None:
-    """One short line when everything is up; a red box for each service that is down."""
+def service_status(
+    models: list[str] | None,
+) -> tuple[ChromaVectorStore | None, tuple[Pill, ...]]:
+    """Connect to Chroma; status pills for the header, and a red box for each service down."""
     store: ChromaVectorStore | None
     try:
         store = connect_store(settings.chroma_host, settings.chroma_port)
-        chroma = f"🟢 Chroma · {store.count()} chunks in '{PLAYGROUND_COLLECTION}'"
+        chroma = Pill(f"Chroma · {store.count():,} chunks", ok=True)
     except VectorStoreError:
-        store, chroma = None, ""
+        store, chroma = None, Pill("Chroma down", ok=False)
         st.error("Chroma is not running: `docker compose -f docker/docker-compose.yml up -d`")
     if models is None:
         st.error("Ollama is not running: `brew services start ollama`")
-    ollama = f"🟢 Ollama · {len(models)} model(s)" if models is not None else ""
-    st.caption("  ·  ".join(part for part in (chroma, ollama) if part))
-    return store
+    ollama = (Pill(f"Ollama · {len(models)} models", ok=True) if models is not None
+              else Pill("Ollama down", ok=False))  # fmt: skip
+    return store, (chroma, ollama)
 
 
 def show_pipeline(active: str | None, ctx: TabContext) -> None:

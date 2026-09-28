@@ -8,6 +8,7 @@ from typing import Any
 
 import plotly.graph_objects as go
 
+from rag_eval_platform.playground.gate_view import TypeCompare
 from rag_eval_platform.playground.query_visuals import (
     INVALID_COLOR,
     YES_COLOR,
@@ -15,11 +16,15 @@ from rag_eval_platform.playground.query_visuals import (
     RerankMove,
     SimilarityRow,
 )
+from rag_eval_platform.playground.session_metrics import SessionPoint
 from rag_eval_platform.playground.visuals import ChunkSpan, MapPoint, SizeBin
 
 CHART_CONFIG = {"displayModeBar": False}
 NEUTRAL, MUTED, ACCENT, KEPT = "#2563eb", "#cbd5e1", "#d97706", "#60a5fa"
 BLOCK_COLORS = {"rules": "#6366f1", "source": "#16a34a", "question": "#d97706"}
+
+
+FONT = "Inter, Helvetica, Arial, sans-serif"  # the app's font (set in .streamlit/config.toml)
 
 
 def _layout(fig: go.Figure, height: int, title: str | None = None) -> go.Figure:
@@ -29,7 +34,9 @@ def _layout(fig: go.Figure, height: int, title: str | None = None) -> go.Figure:
         margin={"l": 8, "r": 8, "t": 32 if title else 8, "b": 8},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font={"family": "Helvetica, Arial, sans-serif", "size": 11},
+        # Text and grid colours are left to Streamlit's chart theme, so they suit light and dark.
+        font={"family": FONT, "size": 11},
+        hoverlabel={"font": {"family": FONT}},
     )
     return fig
 
@@ -229,9 +236,16 @@ def timing_chart(
 
 
 def gauge_chart(
-    title: str, value: float, threshold: float | None, progress: float = 1.0, height: int = 200
+    title: str,
+    value: float,
+    threshold: float | None,
+    progress: float = 1.0,
+    height: int = 200,
+    *,
+    passed: bool | None = None,  # override, e.g. a gate check that failed on another rule
 ) -> go.Figure:
-    passed = threshold is None or value >= threshold
+    if passed is None:
+        passed = threshold is None or value >= threshold
     gauge: dict[str, Any] = {
         "axis": {"range": [0, 1]},
         "bar": {"color": YES_COLOR if passed else INVALID_COLOR},
@@ -293,4 +307,46 @@ def per_type_chart(
                     marker_color=palette[i % len(palette)])  # fmt: skip
     fig.update_layout(barmode="group", legend={"orientation": "h", "y": 1.1})
     fig.update_yaxes(range=[0, 1.1])
+    return _layout(fig, height)
+
+
+def type_compare_chart(rows: Sequence[TypeCompare], height: int = 260) -> go.Figure:
+    """Baseline vs now for each query type and metric (grouped bars)."""
+    labels = [f"{r.query_type} · {r.metric}" for r in rows]
+    fig = go.Figure()
+    fig.add_bar(name="baseline", x=labels, y=[r.before or 0.0 for r in rows],
+                marker_color=MUTED)  # fmt: skip
+    fig.add_bar(name="now", x=labels, y=[r.now for r in rows], marker_color=NEUTRAL)
+    fig.update_layout(barmode="group", legend={"orientation": "h", "y": 1.12})
+    fig.update_yaxes(range=[0, 1.1])
+    return _layout(fig, height)
+
+
+def session_time_chart(points: Sequence[SessionPoint], height: int = 220) -> go.Figure:
+    """Seconds per question; refusals greyed out."""
+    fig = go.Figure(
+        go.Bar(
+            x=[f"Q{p.number}" for p in points],
+            y=[p.total_s for p in points],
+            marker_color=[MUTED if p.refused else NEUTRAL for p in points],
+            text=[f"{p.total_s:.1f}s" for p in points],
+            textposition="outside",
+            hovertext=[p.question for p in points],
+            name="seconds",
+        )
+    )
+    fig.update_yaxes(title_text="seconds")
+    return _layout(fig, height)
+
+
+def session_quality_chart(points: Sequence[SessionPoint], height: int = 220) -> go.Figure:
+    """Citation coverage and grounding per question (gaps where they do not apply)."""
+    x = [f"Q{p.number}" for p in points]
+    fig = go.Figure()
+    fig.add_scatter(x=x, y=[p.coverage for p in points], name="citation coverage",
+                    mode="lines+markers", line={"color": NEUTRAL, "width": 2})  # fmt: skip
+    fig.add_scatter(x=x, y=[p.grounding for p in points], name="grounding",
+                    mode="lines+markers", line={"color": ACCENT, "width": 2})  # fmt: skip
+    fig.update_yaxes(range=[0, 1.05], tickformat=".0%")
+    fig.update_layout(legend={"orientation": "h", "y": 1.15})
     return _layout(fig, height)
