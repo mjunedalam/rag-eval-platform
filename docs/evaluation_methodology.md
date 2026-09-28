@@ -1,6 +1,6 @@
 # Evaluation Methodology
 
-> **Status:** design. This describes how the platform will measure and gate quality. The evaluation modules are placeholders and will be implemented next.
+> **Status:** implemented. Retrieval evaluation (Phase 2), generation evaluation (Phase 4) and the CI gate (Phase 5) are built as described here.
 
 Quality is measured in three layers:
 
@@ -88,15 +88,15 @@ Sanity check of the judge before trusting it: on a hand-made example, `gemma3:12
 
 ## 4. CI/CD evaluation gate
 
-`.github/workflows/evaluation_gate.yml` runs on every pull request:
+`.github/workflows/evaluation_gate.yml` runs on every pull request and every push to `main` (`scripts/run_gate.py`, logic in `evaluation/gate.py`):
 
-1. Install the project and build the index from `data/raw/`.
-2. Run every golden example through the pipeline.
-3. Compute retrieval and generation metrics.
-4. Compare the averages against the thresholds.
-5. Fail the check, and block the merge, if any metric is below its threshold. The full report is uploaded as a build artifact.
+1. Install the project with CPU embeddings (`uv sync --locked --extra local-embeddings`) next to a Chroma service container.
+2. Rebuild the index from `data/raw/` and score retrieval on every golden question, **live**.
+3. Compare with the thresholds and with the committed retrieval baseline (`baselines/retrieval.json`).
+4. Read generation scores from the committed generation baseline (`baselines/generation.json`), judged locally, and check that it is **fresh**.
+5. Fail the check if any rule fails. The before/after table goes to the job summary and to one pull-request comment, and the reports are uploaded as a build artifact.
 
-**Starting thresholds** (tune once a baseline exists):
+**Thresholds** (settings, `RAG_MIN_*`):
 
 | Metric | Minimum |
 |---|---|
@@ -106,12 +106,16 @@ Sanity check of the judge before trusting it: on a hand-made example, `gemma3:12
 | Faithfulness | 0.85 |
 | Answer relevance | 0.80 |
 
-Thresholds live in configuration, not in code. Raising a threshold is a deliberate, reviewed change.
+**Regression rule.** A retrieval metric also fails when it drops more than `RAG_GATE_MAX_DROP` (default 0.02) below the retrieval baseline, even while it is above its threshold.
+
+**Freshness rule.** GitHub's runners have no GPU, so the generator and judge cannot run in CI. The generation baseline stores a fingerprint of everything its scores depend on: generator model, temperature, reasoning effort and prompt version; judge model and citation prompt version; embedding model, chunking, top-k and re-ranking; and hashes of the golden set and of `data/raw/`. If any of these differs from the current settings, the gate blocks and lists the changes. The fix is `uv run python scripts/run_generation_evaluation.py --save-baseline`, then commit `baselines/generation.json`.
+
+Thresholds and baselines live in configuration and in tracked files, not in code. Raising a threshold or updating a baseline is a deliberate, reviewed change. Merges are only blocked when "Evaluate against golden dataset" is a required status check in branch protection.
 
 **Keeping CI cheap and stable**
 
-- Retrieval metrics are deterministic and run on every pull request.
-- Generation metrics call an LLM, so they cost money and vary slightly between runs. Run them on a fixed sample with a pinned judge, and allow a small tolerance.
+- Retrieval metrics are deterministic and cost only a CPU minute, so they run on every pull request.
+- Generation metrics are judged once per change that affects them, locally, with a pinned judge. The freshness rule guarantees the committed numbers match what is being merged.
 
 ### Baseline (2026-09-26)
 

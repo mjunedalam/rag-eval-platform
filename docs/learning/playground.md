@@ -1,6 +1,6 @@
 # The visual playground, explained simply
 
-The playground is where every idea from Phases 1–4 becomes something you can **see move**. You upload your own documents, ask one question, and six tabs show what each phase did with it.
+The playground is where every idea from Phases 1–5 becomes something you can **see move**. You upload your own documents, ask one question, and the tabs show what each phase did with it. The ⑥ Gate tab shows how CI decides whether a change may merge.
 
 ```bash
 uv run streamlit run src/rag_eval_platform/playground/app.py    # http://localhost:8501
@@ -33,6 +33,11 @@ mindmap
       Live judge
       Citation verdicts
       Golden-set reports
+    ⑥ Gate
+      CI flow
+      Checks board
+      What-if run
+      Flipped questions
 ```
 
 ---
@@ -70,7 +75,28 @@ sequenceDiagram
     O-->>C: the reply settles: steps, sources, actions
 ```
 
-The chat works like Claude's. Your message sits in a warm bubble on the right. The reply is plain text that **streams as fast as the model writes**: each piece shows up the moment it arrives, with no typing delay added. A spinning ✻ and a shimmering status ("Searching…", "Thinking…", "Writing the answer…") show what's happening. When the answer is done you get:
+The chat works like Claude's. Your message sits in a warm bubble on the right, and the reply is written the way a chat assistant writes:
+
+- **A status line like Claude Code's**: a spinning ✻ and a shimmering word that changes every 1.5 s to fit the step (*Searching, Scouring, Sifting…* while searching; *Thinking, Pondering, Mulling, Incubating, Churning…* while the model gets ready; *Writing, Composing, Crafting…* while it writes), with a live timer and token count: `Composing… (20s · ↓ 257 tokens)`.
+- **Finished steps as ✓ lines**, like a coding assistant's tool calls: `✓ Searched 11 chunks → best match 0.23 · 0.7 s`, `✓ Read 5 sources`, `✓ Wrote 328 tokens · 18 tok/s`.
+- **A steady rhythm**: the model sends text in bursts, so a background thread collects it and the page reveals it evenly, a word at a time, about 25 times a second, catching up within 0.3 s, so it never stalls or jumps.
+- **Words come into focus**: each new piece starts faint and blurred (opacity 0.2, 3 px blur) and sharpens over about 0.9 s (1.6 s in slow motion), so the newest lines always carry a soft gradient, the way Claude writes. Headings, lists, tables and citation chips form as they arrive.
+- **Light or dark**: pick **⋮ → Settings → Light, Dark or System** (System follows your computer). Every colour in the app has a light and a dark value, so the switch is instant.
+
+```mermaid
+sequenceDiagram
+    participant M as Model (Ollama)
+    participant P as StreamPump (background thread)
+    participant UI as Page (every 0.04 s)
+    M-->>P: text arrives in bursts
+    loop every frame
+        UI->>P: poll new text
+        UI->>UI: reveal a steady amount (catch up within 0.3 s)
+        UI->>UI: fade in new words, rotate the status word, tick the timer
+    end
+```
+
+When the answer is done you get:
 
 | Part | What it shows |
 |---|---|
@@ -85,7 +111,7 @@ The sidebar's **Answer style** picks how the model writes. **Detailed** (the def
 
 There is **no chat memory**: every question is answered on its own from your documents, so an earlier question can't leak into a later answer. **New chat** clears the conversation.
 
-The **first token** tile is how long the model took before writing anything: loading into memory (a cold start) and reading the prompt. **Speed** is measured *after* the first token, so a slow start does not look like slow writing. Turn on **🐢 Slow motion** in the sidebar to stretch every pause, type the answer out slowly (instead of at model speed) and grow the charts over more frames.
+The **first token** tile is how long the model took before writing anything: loading into memory (a cold start) and reading the prompt. **Speed** is measured *after* the first token, so a slow start does not look like slow writing. Turn on **🐢 Slow motion** in the sidebar to stretch every pause, write the answer at a fixed, slow pace you can follow, change the status word every 3 s, and grow the charts over more frames.
 
 At the top of every tab, a **pipeline diagram** shows where you are:
 
@@ -114,6 +140,7 @@ Amber = the tab you're on, green = phases with data, grey = not done yet (e.g. "
 | **③ Retrieve** | **Top-k** by cosine similarity; a **cross-encoder** re-ranks | Turn on *Re-rank* and ask again: crossing lines show where the cross-encoder disagreed with vector search |
 | **④ Generate** | The **prompt** is rules + numbered sources + question; **citations** point to sources | Set *Top-k* to 1 and ask a broad question; check whether the model refuses or cites only `[1]` |
 | **⑤ Evaluate** | An **LLM judge** grades faithfulness, relevance and citation validity | Judge an answer, then ask something your documents don't cover and compare |
+| **⑥ Gate** | The **CI gate**: every change is scored on the golden set before it merges | Run the gate with the defaults (pass), then drag *Chunk size* to 200 and run again (blocked: the generation baseline is stale) |
 | **Overview** | The whole chain at once | Keep it open while you change settings and ask again |
 
 ### ① Ingest: from files to chunks
@@ -147,6 +174,23 @@ Each `[n]` in the answer has the colour of source *n* in the list beside it, so 
 ### ⑤ Evaluate: grade this answer
 
 **Judge this answer** sends it to `gemma3:12b` (1–2 minutes). The gauges fill with faithfulness, relevance and citation validity; the verdict diagram draws each cited sentence → its chunk, green if the chunk supports it. Below, the golden-set reports show how the whole system scored on the 30 test questions.
+
+### Answer health: instant quality, no judge
+
+The judge takes 1–2 minutes, so every answer also gets **instant** checks the moment it finishes (the first Overview panel, and the chat's meta line):
+
+| Metric | What it measures | How to read it |
+|---|---|---|
+| **Coverage** | share of claims (sentences, bullets, table rows) that cite a source | low = the model states things without saying where from |
+| **Grounding** | for each cited claim, the share of its content words found in the source it cites | a word-overlap stand-in for faithfulness: high = wording comes from the sources; low = possibly the model's own claim |
+| **Sources · context · answer** | distinct pages sent, characters (and prompt tokens) in the prompt, words in the answer | more context is not always better: watch coverage when it grows |
+| **Time** | search + first token + writing (hover for the split) | a long first token usually means the model was loading |
+
+Bars turn green at 80%, amber at 50%, red below. The header shows session KPIs (questions, average time, average coverage, 👍/👎), and **⑤ Evaluate** opens with **This session**: time per question and coverage and grounding lines, so you can see whether a settings change helped.
+
+### ⑥ Gate: would this change merge?
+
+**Run the gate** rebuilds the sample corpus (`data/raw/`) with your sidebar's chunking, top-k and re-ranking in a separate `gate_preview` collection, scores the 30 golden questions, and applies the same rules as CI: thresholds, a maximum drop of 0.02 from the committed baseline, and a fresh generation baseline. The flow diagram turns green or red step by step, the gauges show every score against its minimum, and **Questions that flipped** lists which questions went from hit to miss. See [Phase 5](phase-5.md) for the rules.
 
 ---
 

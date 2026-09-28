@@ -108,7 +108,7 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | **2. Retrieval** | Chroma (server in Docker, `chromadb-client`) | Dev vector store over HTTP; also a CI service container | in use |
 | | Qdrant | Production vector store with metadata filtering | chosen |
 | | Sentence Transformers `CrossEncoder` | Optional re-ranker (`RAG_RERANK=true`, MS MARCO MiniLM) | in use |
-| | NumPy | Vector math, similarity checks in tests | chosen |
+| | NumPy | Vector math: the playground's meaning-map projection | in use |
 | **3. Generation** | Ollama + `qwen3:8b` (local, open-source) | Default LLM: no API key, no cost, data stays local; native app on macOS for GPU | in use |
 | | `openai` SDK (OpenAI-compatible chat API) | One client for Ollama and OpenAI; answers with `[n]` citations | in use |
 | | Anthropic SDK | Claude as an optional hosted provider | chosen, deferred |
@@ -118,7 +118,7 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | Ollama + `gemma3:12b` (local judge) | LLM-as-a-judge: a different, larger model than the generator; also checks `[n]` citation validity | in use |
 | | Custom `evaluation/metrics.py` + `evaluator.py` | Deterministic retrieval metrics (Precision@k, Recall@k, MRR, NDCG@k) and threshold checks | in use |
 | | Pandas | Score tables in the notebook; reports and per-`query_type` breakdowns | in use |
-| **5. CI/CD gate** | GitHub Actions | `ci.yml` (lint, types, unit tests, secret scan) in use; `evaluation_gate.yml` (block merge on regression) chosen | in use |
+| **5. CI/CD gate** | GitHub Actions | `ci.yml` (lint, types, unit tests, secret scan) and `evaluation_gate.yml` (golden set on every PR: live retrieval, fresh committed generation baseline, PR comment) | in use |
 | | `astral-sh/setup-uv` action | Install uv and cache dependencies in CI | in use |
 | | pytest-cov | Coverage report in CI | in use |
 | | gitleaks (GitHub Action) | Fail CI if a secret is committed | in use |
@@ -127,7 +127,7 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | httpx | FastAPI `TestClient` for integration tests | proposed |
 | | Docker / Docker Compose | Local infrastructure (Chroma now); API image later | in use |
 | | chromadb-admin (community image, `ui` profile) | Browse Chroma collections and chunks in a web UI | in use |
-| | Streamlit (`ui` group) | The visual playground: six lazy tabs (Overview + one per phase), upload PDFs, tune every setting, judge an answer | in use |
+| | Streamlit (`ui` group) | The visual playground: a chat beside seven lazy tabs (Overview, one per phase, ⑥ Gate), upload PDFs, tune every setting, judge an answer, run the gate | in use |
 | | Plotly (`ui` group) | Animated playground charts: meaning map (2-D/3-D), similarity, re-ranking, funnel, gauges, reports | in use |
 | | JupyterLab + pandas (`notebook` group) | `notebooks/exploration.ipynb`: inspect chunks, ask questions, run experiments | in use |
 | **7. Observability** | Python `logging` (JSON lines) | One structured line per answered question (chunks, citations, tokens, latency) | in use |
