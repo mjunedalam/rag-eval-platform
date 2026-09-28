@@ -34,6 +34,7 @@ def test_app_renders_without_errors() -> None:
         "③ Retrieve",
         "④ Generate",
         "⑤ Evaluate",
+        "⑥ Gate",
     ]
 
 

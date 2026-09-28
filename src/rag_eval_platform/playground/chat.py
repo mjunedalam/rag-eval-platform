@@ -126,9 +126,10 @@ def user_html(question: str) -> str:
     return f'<div class="rag-user"><span>{html.escape(question)}</span></div>'
 
 
-def streaming_markdown(text: str, sources: int) -> str:
-    """An answer still being written, as Markdown with chips, ending in a soft cursor."""
-    return spans_markdown(text_spans(text, sources)) + '<span class="rag-cursor">●</span>'
+def streaming_markdown(text: str, sources: int, levels: Sequence[tuple[int, float]] = ()) -> str:
+    """An answer still being written: Markdown with chips, the newest words fading into focus,
+    and a soft cursor at the end."""
+    return spans_markdown(text_spans(text, sources), levels) + '<span class="rag-cursor">●</span>'
 
 
 def cited_sources_html(trace: QueryTrace) -> str:

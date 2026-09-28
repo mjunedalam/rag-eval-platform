@@ -130,3 +130,11 @@ def test_streaming_markdown_renders_chips_and_ends_with_the_cursor() -> None:
     assert rendered.startswith("**MRR** <span")
     assert "&lt;b>" in rendered
     assert rendered.endswith('<span class="rag-cursor">●</span>')
+
+
+def test_streaming_markdown_fades_the_newest_words_and_chips() -> None:
+    faded = streaming_markdown("MRR ranks [1]", sources=2, levels=((4, 0.0),))
+
+    assert faded.startswith("MRR ")
+    assert faded.count("opacity:0.20") == 2  # "ranks" and the [1] chip
+    assert "opacity" not in streaming_markdown("MRR ranks", sources=2)

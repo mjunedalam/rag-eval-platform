@@ -14,6 +14,7 @@ import streamlit as st
 from rag_eval_platform._optional import OptionalDependencyError
 from rag_eval_platform.evaluation.judge import JudgeError
 from rag_eval_platform.generation.generator import GenerationError
+from rag_eval_platform.playground.answer_metrics import answer_health
 from rag_eval_platform.playground.chat import (
     Turn,
     cited_sources_html,
@@ -39,6 +40,7 @@ from rag_eval_platform.playground.shared import (
     save_judged,
     settings,
 )
+from rag_eval_platform.playground.streaming import steps_html
 
 CHAT_HEIGHT = 555  # the scrolling conversation; the input sits below it
 
@@ -46,7 +48,8 @@ CHAT_HEIGHT = 555  # the scrolling conversation; the input sits below it
 # text without an avatar, quiet collapsible rows, small grey icon actions, a rounded input.
 CHAT_CSS = """<style>
 .st-key-chat-pane .rag-user {display: flex; justify-content: flex-end; margin: 0.5rem 0 0.1rem;}
-.st-key-chat-pane .rag-user span {background: #f0eee6; color: #1f1e1d; line-height: 1.45;
+.st-key-chat-pane .rag-user span {background: var(--rag-soft); color: var(--rag-ink);
+  line-height: 1.45;
   border-radius: 16px 16px 4px 16px; padding: 0.5rem 0.9rem; max-width: 85%;
   white-space: pre-wrap;}
 .st-key-chat-pane [class*="st-key-chat-answer"] :is(p, li, td, th) {
@@ -56,22 +59,23 @@ CHAT_CSS = """<style>
 .st-key-chat-pane [class*="st-key-chat-answer"] table {border-collapse: collapse;
   font-size: 0.9rem; margin: 0.4rem 0;}
 .st-key-chat-pane [class*="st-key-chat-answer"] :is(td, th) {font-size: 0.9rem;
-  border: 1px solid #e5e2d9; padding: 0.3rem 0.55rem;}
-.st-key-chat-pane [class*="st-key-chat-answer"] th {background: #f5f4ef; font-weight: 650;}
-.st-key-chat-pane .rag-sources {font-size: 0.8rem; color: #6b7280; margin: 0.2rem 0 0.3rem;}
+  border: 1px solid var(--rag-border); padding: 0.3rem 0.55rem;}
+.st-key-chat-pane [class*="st-key-chat-answer"] th {background: var(--rag-soft); font-weight: 650;}
+.st-key-chat-pane .rag-sources {font-size: 0.8rem; color: var(--rag-muted);
+  margin: 0.2rem 0 0.3rem;}
 .st-key-chat-pane .rag-sources .label {font-weight: 600; margin-right: 0.3rem;}
-.st-key-chat-pane .rag-source {display: inline-block; background: #f5f4ef;
+.st-key-chat-pane .rag-source {display: inline-block; background: var(--rag-soft);
   border-radius: 10px; padding: 0 0.5rem; margin: 0.1rem 0.2rem 0.1rem 0;}
 .st-key-chat-pane [data-testid="stExpander"] details {border: none; background: transparent;}
-.st-key-chat-pane [data-testid="stExpander"] summary {padding: 0.1rem 0; color: #6b7280;}
+.st-key-chat-pane [data-testid="stExpander"] summary {padding: 0.1rem 0; color: var(--rag-muted);}
 .st-key-chat-pane [data-testid="stExpander"] summary p {font-size: 0.82rem;}
 .st-key-chat-pane [data-testid="stExpander"] summary:hover {color: #d97757;}
-.st-key-chat-pane [class*="st-key-chat-actions"] button {color: #6b7280; min-height: 0;
+.st-key-chat-pane [class*="st-key-chat-actions"] button {color: var(--rag-muted); min-height: 0;
   padding: 0.1rem 0.4rem; border-radius: 6px;}
 .st-key-chat-pane [class*="st-key-chat-actions"] button:hover {color: #d97757;
-  background: #f5f4ef;}
-.st-key-chat-pane [data-testid="stChatInput"] {border-radius: 16px; background: #fff;
-  border: 1px solid #d6d3c9; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);}
+  background: var(--rag-soft);}
+.st-key-chat-pane [data-testid="stChatInput"] {border-radius: 16px; background: var(--rag-surface);
+  border: 1px solid var(--rag-border-strong); box-shadow: 0 1px 6px var(--rag-shadow);}
 .st-key-chat-pane [data-testid="stChatInput"]:focus-within {border-color: #d97757;}
 </style>"""
 
@@ -80,13 +84,14 @@ CHAT_CSS = """<style>
 class Bubble:
     """Placeholders of the reply being written, filled by the live Overview."""
 
-    status: Any
+    steps: Any  # finished steps, one ✓ line each
+    status: Any  # what is happening now, with a rotating word
     text: Any
 
 
 def render(snapshot: IndexSnapshot | None, models: list[str] | None) -> Bubble | None:
     """Draw the chat pane; returns the empty reply bubble when a question starts now."""
-    st.markdown(CHAT_CSS, unsafe_allow_html=True)
+    st.html(CHAT_CSS)
     with st.container(key="chat-pane"):
         return _pane(snapshot, models)
 
@@ -149,12 +154,15 @@ def _welcome(snapshot: IndexSnapshot | None, ready: bool) -> str | None:
 
 def _start_reply(question: str) -> Bubble:
     st.markdown(user_html(question), unsafe_allow_html=True)
+    # Like Claude: the timeline of finished steps on top, the answer below it, and the
+    # rotating status as the last line, so it moves down as the answer grows.
     with st.container(key="chat-reply-live"):
-        status = st.empty()
-        status.markdown(status_html("Starting…"), unsafe_allow_html=True)
+        steps = st.empty()
         with st.container(key="chat-answer-live"):
             text = st.empty()
-    return Bubble(status, text)
+        status = st.empty()
+        status.markdown(status_html("Starting…"), unsafe_allow_html=True)
+    return Bubble(steps, status, text)
 
 
 def _turn(index: int, turn: Turn, snapshot: IndexSnapshot | None, *, is_active: bool) -> None:
@@ -164,9 +172,12 @@ def _turn(index: int, turn: Turn, snapshot: IndexSnapshot | None, *, is_active: 
     with st.container(key=f"chat-reply-{index}"):
         steps = run_steps(trace, len(snapshot.chunks) if snapshot else None, turn.first_token_s)
         with st.expander(f"✓ {steps_summary(steps)}"):
-            for step in steps:
-                timing = f" · {step.ms / 1000:.1f} s" if step.ms is not None else ""
-                st.markdown(f"✓ **{step.label}** · {step.detail}{timing}")
+            lines = [
+                f"{step.label} · {step.detail}"
+                + (f" · {step.ms / 1000:.1f} s" if step.ms is not None else "")
+                for step in steps
+            ]
+            st.markdown(steps_html(lines), unsafe_allow_html=True)
         if answer.is_refusal:
             st.warning("The sources did not contain the answer, so the model did not guess.")
         with st.container(key=f"chat-answer-{index}"):
@@ -181,8 +192,15 @@ def _turn(index: int, turn: Turn, snapshot: IndexSnapshot | None, *, is_active: 
         speed = LiveStats(tokens=answer.output_tokens, generate_s=answer.latency_ms / 1000,
                           first_token_s=turn.first_token_s).tokens_per_s  # fmt: skip
         speed_text = f" · {speed:.0f} tok/s" if speed is not None else ""
+        health = answer_health(trace, turn.first_token_s)
+        quality = "".join(
+            f" · {name} {value:.0%}"
+            for name, value in (("coverage", health.citation_coverage),
+                                ("grounding", health.grounding))
+            if value is not None
+        )  # fmt: skip
         st.caption(f"{answer.model} · {answer.output_tokens} tokens{speed_text} · "
-                   f"{(trace.retrieval_ms + answer.latency_ms) / 1000:.1f} s"
+                   f"{(trace.retrieval_ms + answer.latency_ms) / 1000:.1f} s{quality}"
                    + (" · 📊 in dashboard" if is_active else ""))  # fmt: skip
         _actions(index, turn, key, is_active=is_active, judged=judged is not None)
 

@@ -21,6 +21,7 @@ from rag_eval_platform.generation.generator import (
     OpenAICompatibleClient,
 )
 from rag_eval_platform.playground import charts
+from rag_eval_platform.playground.answer_metrics import answer_health, health_html, health_rows
 from rag_eval_platform.playground.chat import Turn, add_turn, replace_turn, streaming_markdown
 from rag_eval_platform.playground.core import (
     REPORTS_DIR,
@@ -29,15 +30,14 @@ from rag_eval_platform.playground.core import (
     retrieve_step,
     trace_key,
 )
+from rag_eval_platform.playground.header import panel_title_html
 from rag_eval_platform.playground.live import (
     LiveStats,
     Pace,
     pace,
-    split_for_typing,
     stat_tiles,
     stats_from_trace,
     status_html,
-    status_text,
     tail_for_display,
     tiles_html,
     typing_html,
@@ -45,7 +45,7 @@ from rag_eval_platform.playground.live import (
 from rag_eval_platform.playground.query_visuals import (
     answer_spans,
     similarity_rows,
-    spans_html,
+    spans_markdown,
     timing_rows,
     was_reranked,
 )
@@ -63,6 +63,14 @@ from rag_eval_platform.playground.shared import (
     mark_shown,
     settings,
 )
+from rag_eval_platform.playground.streaming import (
+    StreamPump,
+    fade_levels,
+    reveal_count,
+    snap_to_word,
+    status_line,
+    steps_html,
+)
 from rag_eval_platform.playground.visuals import (
     PipelineStats,
     meaning_map,
@@ -76,13 +84,13 @@ CHART_HEIGHT = PANEL_HEIGHT - 45
 REFRESH_EVERY = 0.25  # seconds between live tile/timing updates while the answer streams
 # Characters the answer panel shows while writing (about 4 lines), so the cursor stays in view.
 LIVE_TAIL = 150
-TITLES = (
-    "① Ingest · chunk sizes",
-    "② Embed · meaning map",
-    "③ Retrieve · similarity",
-    "④ Generate · answer",
-    "⑤ Evaluate · scores",
-    "⏱ Timing",
+TITLES = (  # (title, phase accent); the first panel shows chunk sizes until a question
+    ("✦ Answer health", "health"),
+    ("② Embed · meaning map", "embed"),
+    ("③ Retrieve · similarity", "retrieve"),
+    ("④ Generate · answer", "generate"),
+    ("⑤ Evaluate · scores", "evaluate"),
+    ("⏱ Timing", "timing"),
 )
 
 
@@ -93,8 +101,8 @@ def render(ctx: TabContext) -> None:
         column.container(height=PANEL_HEIGHT, border=True)
         for column in [*st.columns(2), *st.columns(2), *st.columns(2)]
     ]
-    for cell, title in zip(cells, TITLES, strict=True):
-        cell.markdown(f"**{title}**")
+    for cell, (title, phase) in zip(cells, TITLES, strict=True):
+        cell.markdown(panel_title_html(title, phase), unsafe_allow_html=True)
     slots = [cell.empty() for cell in cells]
 
     question = st.session_state.pop(PENDING_QUESTION, None)
@@ -125,18 +133,20 @@ def _run_live(
 
     show_phase("Embed", base)
     _show_tiles(tiles, stats)
-    _ingest(ctx, slots[0])
-    with slots[3].container():
-        status = st.empty()
+    slots[0].caption("Measured the moment the answer is done: citation coverage, grounding, "
+                     "sources, context and time.")  # fmt: skip
+    with slots[3].container():  # the answer, then the status as its last line (like Claude)
         text = st.empty()
+        status = st.empty()
     slots[4].caption("Waiting for the answer…")
     slots[5].caption("Timing starts when the answer does.")
-    _say(status, status_text("embed"), bubble)
+    done: list[str] = []  # finished steps, shown as ✓ lines in the chat reply
+    _say(status, status_line("embed", 0), bubble)
     time.sleep(speed.step_pause)
 
     try:
         show_phase("Retrieve", base)
-        _say(status, status_text("search", chunks=len(snapshot.chunks)), bubble)
+        _say(status, status_line("search", 0, detail=f"{len(snapshot.chunks):,} chunks"), bubble)
         step = retrieve_step(
             question,
             embedder=load_embedder(settings.embedding_model),
@@ -167,15 +177,23 @@ def _run_live(
         sources=len(step.final_results), elapsed_s=time.perf_counter() - started,
     )  # fmt: skip
     _show_tiles(tiles, stats)
+    best = f" → best match {step.vector_results[0].score:.2f}" if step.vector_results else ""
+    took = (f"{step.retrieval_ms:.0f} ms" if step.retrieval_ms < 1000
+            else f"{step.retrieval_ms / 1000:.1f} s")  # fmt: skip
+    _step_done(bubble, done, f"Searched {len(snapshot.chunks):,} chunks{best} · {took}")
+    if was_reranked(partial):
+        _step_done(bubble, done, f"Re-ranked {len(step.vector_results)} candidates → "
+                   f"top {len(step.final_results)}")  # fmt: skip
     retrieved_stats = PipelineStats(
         documents=base.documents, chunks=base.chunks,
         candidates=len(step.vector_results), top_k=len(step.final_results),
     )  # fmt: skip
 
     show_phase("Generate", retrieved_stats)
-    _say(status, status_text("read", sources=len(step.final_results)), bubble)
+    _say(status, status_line("read", 0, detail=f"{len(step.final_results)} sources"), bubble)
     time.sleep(speed.step_pause)
-    _say(status, status_text("think"), bubble)
+    _step_done(bubble, done, f"Read {len(step.final_results)} sources")
+    _say(status, status_line("think", 0), bubble)
     llm = settings.model_copy(update={
         "llm_provider": "ollama", "llm_model": options.model,
         "llm_reasoning_effort": options.reasoning_effort, "llm_temperature": options.temperature,
@@ -208,7 +226,11 @@ def _run_live(
     st.session_state[TRACE] = trace
     st.session_state[FIRST_OUTPUT_WAIT] = (trace_key(trace), first_token_s)
 
-    _say(status, status_text("cite"), bubble)
+    speed_text = LiveStats(tokens=answer.output_tokens, generate_s=answer.latency_ms / 1000,
+                           first_token_s=first_token_s).tokens_per_s  # fmt: skip
+    per_second = f" · {speed_text:.0f} tok/s" if speed_text is not None else ""
+    _step_done(bubble, done, f"Wrote {answer.output_tokens or 0} tokens{per_second}")
+    _say(status, status_line("cite", 0), bubble)
     time.sleep(speed.step_pause)
     # This run already animated these panels; the redraw below shows them settled.
     key = trace_key(trace)
@@ -231,37 +253,63 @@ def _type_out(
     bubble: Any,
     sources: int,
 ) -> float | None:
-    """Stream the answer smoothly (newest text in view), updating tiles and timing as it goes.
+    """Write the answer the way a chat assistant does, updating tiles and timing as it goes.
+
+    A background thread reads the model (``StreamPump``), so the page keeps moving while it
+    waits: the status word rotates with a live timer, and text arriving in bursts is revealed
+    at a steady pace (``reveal_count``) with new words fading in.
 
     Returns the seconds waited for the first token (model loading, reading the prompt).
     """
-    written, frame = "", 0
-    generation_started = time.perf_counter()
+    pump = StreamPump(stream)
+    received, shown, pieces, frame = "", 0, 0, 0
+    reveals: list[tuple[int, float]] = []  # (where a revealed piece starts, when), for the fade
+    generation_started = last_frame = time.perf_counter()
     first_token_s: float | None = None
-    last_refresh = 0.0
-    for pieces, piece in enumerate(stream, start=1):
-        if pieces == 1:
-            first_token_s = time.perf_counter() - generation_started
-            _say(status, status_text("write"), bubble)
-        for part in split_for_typing(piece, speed.typing_size):
-            written += part
-            text.markdown(typing_html(tail_for_display(written, LIVE_TAIL)), unsafe_allow_html=True)
-            if bubble is not None:  # the chat scrolls, so it shows the whole answer so far
-                bubble.text.markdown(streaming_markdown(written, sources), unsafe_allow_html=True)
-            if speed.typing_pause:
-                time.sleep(speed.typing_pause)
+    last_refresh, last_line = 0.0, ""
+    while True:
+        time.sleep(speed.text_frame_s)
+        finished = pump.finished  # read before polling, so no piece can slip past the end
+        new = pump.poll()
         now = time.perf_counter()
+        if new:
+            received += "".join(new)
+            pieces += len(new)
+            if first_token_s is None:
+                first_token_s = now - generation_started
+        previous = shown
+        shown = reveal_count(shown, len(received), now - last_frame, min_cps=speed.min_cps,
+                             catch_up_s=speed.catch_up_s)  # fmt: skip
+        shown = snap_to_word(received, shown)  # a word at a time, never half a word
+        if shown != previous:
+            reveals.append((previous, now))
+        levels = fade_levels(reveals, now, speed.fade_s)
+        last_frame = now
+        elapsed = now - generation_started
+        line = status_line("think" if first_token_s is None else "write", elapsed,
+                           tokens=pieces, every_s=speed.verb_every_s)  # fmt: skip
+        if line != last_line:
+            _say(status, line, bubble)
+            last_line = line
+        if shown != previous or levels:  # new words, or words still coming into focus
+            visible = received[:shown]
+            text.markdown(typing_html(tail_for_display(visible, LIVE_TAIL)), unsafe_allow_html=True)
+            if bubble is not None:  # the chat scrolls, so it shows the whole answer so far
+                bubble.text.markdown(streaming_markdown(visible, sources, levels),
+                                     unsafe_allow_html=True)  # fmt: skip
         if now - last_refresh >= REFRESH_EVERY:
             last_refresh = now
-            generating = now - generation_started
-            live = LiveStats(**{**stats.__dict__, "tokens": pieces, "generate_s": generating,
-                                "first_token_s": first_token_s,
+            live = LiveStats(**{**stats.__dict__, "tokens": pieces or None,
+                                "generate_s": elapsed, "first_token_s": first_token_s,
                                 "elapsed_s": now - started})  # fmt: skip
             _show_tiles(tiles, live)
-            rows = (("retrieve", retrieval_ms), ("generate", generating * 1000))
+            rows = (("retrieve", retrieval_ms), ("generate", elapsed * 1000))
             timing.plotly_chart(charts.timing_chart(rows, height=CHART_HEIGHT),
                                 key=f"live-timing-{frame}", config=charts.CHART_CONFIG)  # fmt: skip
             frame += 1
+        if finished and shown >= len(received) and not levels:  # let the last words settle
+            break
+    pump.raise_error()
     return first_token_s
 
 
@@ -276,6 +324,13 @@ def _say(status: Any, text: str, bubble: Any = None, *, done: bool = False) -> N
     status.markdown(status_html(text, done=done), unsafe_allow_html=True)
     if bubble is not None:
         bubble.status.markdown(status_html(text, done=done), unsafe_allow_html=True)
+
+
+def _step_done(bubble: Any, done: list[str], line: str) -> None:
+    """Add a finished step to the chat reply's ✓ list."""
+    done.append(line)
+    if bubble is not None:
+        bubble.steps.markdown(steps_html(done), unsafe_allow_html=True)
 
 
 def _fail(status: Any, bubble: Any, message: str) -> None:
@@ -295,12 +350,17 @@ def _draw_static(ctx: TabContext, pipeline: Any, tiles: Any, slots: list[Any]) -
     pipeline.graphviz_chart(pipeline_dot(None, ctx.stats), width="stretch")
     chunks = len(ctx.snapshot.chunks) if ctx.snapshot else None
     stats = LiveStats(chunks=chunks)
+    first: float | None = None
     if ctx.trace is not None:
         stored = st.session_state.get(FIRST_OUTPUT_WAIT)
         first = stored[1] if stored and stored[0] == trace_key(ctx.trace) else None
         stats = stats_from_trace(ctx.trace, chunks, first)
     _show_tiles(tiles, stats)
-    _ingest(ctx, slots[0])
+    if ctx.trace is not None:
+        slots[0].markdown(health_html(health_rows(answer_health(ctx.trace, first))),
+                          unsafe_allow_html=True)  # fmt: skip
+    else:
+        _ingest(ctx, slots[0])
     _embed(ctx, slots[1])
     _retrieve(ctx, slots[2])
     _generate(ctx, slots[3])
@@ -352,7 +412,8 @@ def _generate(ctx: TabContext, slot: Any) -> None:
     if ctx.trace is None:
         slot.caption("Ask a question to see the answer.")
         return
-    slot.markdown(spans_html(answer_spans(ctx.trace.answer)), unsafe_allow_html=True)
+    with slot.container(key="ov-answer"):
+        st.markdown(spans_markdown(answer_spans(ctx.trace.answer)), unsafe_allow_html=True)
 
 
 def _evaluate(ctx: TabContext, slot: Any) -> None:
