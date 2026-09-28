@@ -1,14 +1,16 @@
 """Tests for playground.live: status wording, smooth typing and the live stats tiles."""
 
+import re
+
 import pytest
 from tests.unit.test_query_visuals import answer
 
 from rag_eval_platform.ingestion.chunking import Chunk
 from rag_eval_platform.playground.core import QueryTrace
 from rag_eval_platform.playground.live import (
+    LIVE_CSS,
     LiveStats,
     pace,
-    split_for_typing,
     stat_tiles,
     stats_from_trace,
     status_html,
@@ -34,14 +36,6 @@ def test_status_text_describes_each_step() -> None:
 def test_status_text_rejects_unknown_steps() -> None:
     with pytest.raises(ValueError, match="unknown step"):
         status_text("deploy")
-
-
-def test_split_for_typing_keeps_every_character() -> None:
-    assert split_for_typing("Hello world", size=4) == ["Hell", "o wo", "rld"]
-    assert "".join(split_for_typing("MRR averages [1].", size=3)) == "MRR averages [1]."
-    assert split_for_typing("", size=4) == []
-    with pytest.raises(ValueError, match="size"):
-        split_for_typing("x", size=0)
 
 
 def test_stat_tiles_show_placeholders_until_known() -> None:
@@ -92,8 +86,10 @@ def test_slow_motion_stretches_every_timing() -> None:
     normal, slow = pace(slow=False), pace(slow=True)
 
     assert slow.step_pause > normal.step_pause
-    assert slow.typing_pause > normal.typing_pause
-    assert slow.typing_size is not None
+    assert slow.min_cps < normal.min_cps
+    assert slow.catch_up_s is None  # a fixed, slow pace you can follow
+    assert slow.verb_every_s > normal.verb_every_s
+    assert slow.fade_s > normal.fade_s
     assert slow.frames > normal.frames
     assert slow.frame_seconds > normal.frame_seconds
 
@@ -101,13 +97,16 @@ def test_slow_motion_stretches_every_timing() -> None:
 def test_normal_pace_writes_at_the_model_speed() -> None:
     normal = pace(slow=False)
 
-    assert normal.typing_pause == 0
-    assert normal.typing_size is None
+    assert normal.catch_up_s is not None  # a backlog is emptied quickly, so text keeps up
+    assert normal.catch_up_s <= 0.5
+    assert normal.text_frame_s <= 0.05  # at least 20 updates a second
 
 
-def test_split_for_typing_without_a_size_keeps_the_piece_whole() -> None:
-    assert split_for_typing("Hello world", size=None) == ["Hello world"]
-    assert split_for_typing("", size=None) == []
+def test_css_defines_each_animation_once() -> None:
+    names = re.findall(r"@keyframes ([\w-]+)", LIVE_CSS)
+
+    assert len(names) == len(set(names))  # a duplicate silently overrides the first
+    assert ".rag-timeline" in LIVE_CSS  # the left line with a green dot per step
 
 
 def test_tokens_per_second_needs_time() -> None:

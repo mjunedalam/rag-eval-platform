@@ -23,26 +23,35 @@ _STATUS = {
 LIVE_CSS = """<style>
 @keyframes rag-shimmer {0% {background-position: 200% 0} 100% {background-position: -200% 0}}
 .rag-status {font-size: 0.85rem; font-weight: 500; display: inline-block;
-  background: linear-gradient(90deg, #9ca3af 30%, #111827 50%, #9ca3af 70%);
+  background: linear-gradient(90deg, #9ca3af 30%, var(--rag-shimmer-hi) 50%, #9ca3af 70%);
   background-size: 200% 100%; -webkit-background-clip: text; background-clip: text;
   color: transparent; animation: rag-shimmer 1.8s linear infinite;}
 .rag-status.done {animation: none; background: none; color: #16a34a;}
 @keyframes rag-spin {to {transform: rotate(360deg)}}
 .rag-spark {display: inline-block; color: #d97757; font-weight: 700;
   animation: rag-spin 2.4s linear infinite;}
-@keyframes rag-blink {50% {opacity: 0}}
-@keyframes rag-pulse {0%, 100% {opacity: 0.25; transform: scale(0.8)} 50% {opacity: 1;
+@keyframes rag-breathe {0%, 100% {opacity: 0.25; transform: scale(0.8)} 50% {opacity: 1;
   transform: scale(1)}}
 .rag-cursor {display: inline-block; margin-left: 3px; color: #d97757; font-size: 0.75em;
-  animation: rag-pulse 1s ease-in-out infinite;}
+  animation: rag-breathe 1s ease-in-out infinite;}
+@keyframes rag-fade {from {opacity: 0; filter: blur(1.5px)} to {opacity: 1; filter: none}}
+.rag-timeline {position: relative; margin: 0.1rem 0 0.5rem 0.25rem; padding-left: 0.95rem;
+  border-left: 1.5px solid var(--rag-border); font-size: 0.8rem; color: var(--rag-muted);
+  line-height: 1.6;}
+.rag-step {position: relative;}
+.rag-step::before {content: ""; position: absolute; left: calc(-0.95rem - 4.25px); top: 0.6em;
+  width: 7px; height: 7px; border-radius: 50%; background: #16a34a;
+  box-shadow: 0 0 0 2px var(--rag-page);}
+.rag-step:last-child {animation: rag-fade 0.4s ease-out;}
 .rag-tiles {display: flex; gap: 0.5rem; flex-wrap: nowrap; margin: 0.2rem 0 0.4rem 0;}
-.rag-tile {flex: 1; min-width: 0; border: 1px solid #e5e7eb; border-radius: 8px;
-  padding: 0.25rem 0.5rem; background: #f9fafb;}
-.rag-tile .label {font-size: 0.68rem; color: #6b7280; white-space: nowrap;}
-.rag-tile .value {font-size: 1.05rem; font-weight: 700; color: #111827; white-space: nowrap;}
-@keyframes rag-pulse {0%, 100% {filter: drop-shadow(0 0 0 rgba(217,119,6,0));}
+.rag-tile {flex: 1; min-width: 0; border: 1px solid var(--rag-border); border-radius: 8px;
+  padding: 0.25rem 0.5rem; background: var(--rag-tile);}
+.rag-tile .label {font-size: 0.68rem; color: var(--rag-muted); white-space: nowrap;}
+.rag-tile .value {font-size: 1.05rem; font-weight: 700; color: var(--rag-shimmer-hi);
+  white-space: nowrap;}
+@keyframes rag-glow {0%, 100% {filter: drop-shadow(0 0 0 rgba(217,119,6,0));}
   50% {filter: drop-shadow(0 0 7px rgba(217,119,6,0.9));}}
-g.node.active {animation: rag-pulse 1.4s ease-in-out infinite;}
+g.node.active {animation: rag-glow 1.4s ease-in-out infinite;}
 @keyframes rag-march {to {stroke-dashoffset: -20;}}
 g.edge.flow path {stroke: #d97706 !important; stroke-width: 2px; stroke-dasharray: 6 4;
   animation: rag-march 0.7s linear infinite;}
@@ -61,35 +70,27 @@ def status_text(
     )
 
 
-def split_for_typing(piece: str, size: int | None = 4) -> list[str]:
-    """Cut a streamed burst into small pieces, so text appears smoothly instead of in jumps.
-
-    With no size the piece stays whole, so text appears exactly as fast as the model writes.
-    """
-    if size is None:
-        return [piece] if piece else []
-    if size < 1:
-        raise ValueError("size must be at least 1")
-    return [piece[i : i + size] for i in range(0, len(piece), size)]
-
-
 @dataclass(frozen=True)
 class Pace:
     """How fast the live run plays: normal, or slow motion for watching each step."""
 
     step_pause: float  # seconds a status stays up between phases
-    typing_pause: float  # seconds between typed pieces
-    typing_size: int | None  # characters per typed piece; None = each streamed piece as it comes
+    text_frame_s: float  # seconds between updates of the text being written
+    min_cps: float  # the slowest the text is revealed, in characters per second
+    catch_up_s: float | None  # empty a backlog within this; None = fixed pace (slow motion)
+    verb_every_s: float  # how often the status word changes
+    fade_s: float  # how long new words take to go from faint and blurred to sharp
     frames: int  # frames when a chart grows in
     frame_seconds: float  # seconds per chart frame
 
 
 def pace(*, slow: bool) -> Pace:
     if slow:
-        return Pace(step_pause=1.6, typing_pause=0.045, typing_size=2, frames=24,
-                    frame_seconds=0.06)  # fmt: skip
-    # Normal speed adds no typing delay: the text keeps pace with the model's own stream.
-    return Pace(step_pause=0.35, typing_pause=0.0, typing_size=None, frames=8, frame_seconds=0.05)
+        return Pace(step_pause=1.6, text_frame_s=0.06, min_cps=18, catch_up_s=None,
+                    verb_every_s=3.0, fade_s=1.6, frames=24, frame_seconds=0.06)  # fmt: skip
+    # Normal speed keeps up with the model: a backlog is revealed within 0.3 s, steadily.
+    return Pace(step_pause=0.35, text_frame_s=0.04, min_cps=60, catch_up_s=0.3,
+                verb_every_s=1.5, fade_s=0.9, frames=8, frame_seconds=0.05)  # fmt: skip
 
 
 def tail_for_display(text: str, limit: int = 420) -> str:
