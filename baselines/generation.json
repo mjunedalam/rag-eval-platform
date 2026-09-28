@@ -1,0 +1,729 @@
+{
+  "fingerprint": {
+    "generator_model": "qwen3:8b",
+    "llm_temperature": 0.0,
+    "llm_reasoning_effort": "none",
+    "prompt_version": "v1",
+    "judge_model": "gemma3:12b",
+    "citation_prompt_version": "v1",
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "chunk_strategy": "recursive",
+    "chunk_size": 800,
+    "chunk_overlap": 100,
+    "top_k": 5,
+    "rerank": false,
+    "rerank_candidates": 0,
+    "reranker_model": "",
+    "golden_sha256": "bf6a962feac217abe84e4cd663080db73b219ba048bfb548e4a91356c9d506d4",
+    "corpus_sha256": "ac41822e765fe4f8140e3de14148505f111837122664690aadbaee294231df23"
+  },
+  "report": {
+    "generator_model": "qwen3:8b",
+    "prompt_version": "v1",
+    "judge_model": "gemma3:12b",
+    "citation_prompt_version": "v1",
+    "full": false,
+    "thresholds": {
+      "min_faithfulness": 0.85,
+      "min_answer_relevance": 0.8
+    },
+    "overall": {
+      "faithfulness": 0.9304761904761905,
+      "answer_relevance": 0.8137410291732041,
+      "context_precision": null,
+      "context_recall": null,
+      "citation_validity": 0.8083333333333333,
+      "hallucination_rate": 0.16666666666666666,
+      "refusal_rate": 0.0,
+      "invalid_citation_rate": 0.0
+    },
+    "by_query_type": {
+      "multi_hop": {
+        "faithfulness": 0.8857142857142857,
+        "answer_relevance": 0.8646996575406124,
+        "context_precision": null,
+        "context_recall": null,
+        "citation_validity": 0.8333333333333334,
+        "hallucination_rate": 0.3333333333333333,
+        "refusal_rate": 0.0,
+        "invalid_citation_rate": 0.0
+      },
+      "paraphrase": {
+        "faithfulness": 1.0,
+        "answer_relevance": 0.6662937017769158,
+        "context_precision": null,
+        "context_recall": null,
+        "citation_validity": 0.875,
+        "hallucination_rate": 0.0,
+        "refusal_rate": 0.0,
+        "invalid_citation_rate": 0.0
+      },
+      "short": {
+        "faithfulness": 0.9125,
+        "answer_relevance": 0.86835520723357,
+        "context_precision": null,
+        "context_recall": null,
+        "citation_validity": 0.765625,
+        "hallucination_rate": 0.1875,
+        "refusal_rate": 0.0,
+        "invalid_citation_rate": 0.0
+      }
+    },
+    "examples": [
+      {
+        "example_id": "overview-001",
+        "query_type": "short",
+        "question": "What are the two stages of a RAG system?",
+        "answer": "The two stages of a RAG system are the offline (ingestion) stage and the online (query) stage [1]. The offline stage processes source documents, while the online stage handles user queries by retrieving relevant information [4].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "rag_overview.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9999999999999996,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 0.5,
+        "unsupported_citations": [
+          [
+            4,
+            "The offline stage processes source documents, while the online stage handles user queries by retrieving relevant information."
+          ]
+        ],
+        "generation_ms": 9584.661916999721
+      },
+      {
+        "example_id": "overview-002",
+        "query_type": "paraphrase",
+        "question": "Why would a company choose RAG instead of retraining its model every time documents change?",
+        "answer": "A company might choose RAG instead of retraining its model every time documents change because RAG allows for fresh knowledge without retraining or fine-tuning the model [1]. Additionally, RAG enables the use of private data without including it in the model's training set [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "rag_overview.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.8910966568363848,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 5324.686707999717
+      },
+      {
+        "example_id": "chunking-001",
+        "query_type": "short",
+        "question": "Which chunking strategy is the most common production default and why?",
+        "answer": "Recursive chunking is the most common production default because it tries separators in order, keeping paragraphs and sentences intact far more often than fixed-size chunking, at almost no extra cost [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "chunking_strategies.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.7841598591798586,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4311.827167000047
+      },
+      {
+        "example_id": "chunking-002",
+        "query_type": "paraphrase",
+        "question": "What goes wrong when you cut documents every 500 tokens regardless of their structure?",
+        "answer": "Fixed-size chunking, which cuts text every 500 tokens, can split a sentence in half or divide a table or numbered procedure across two chunks, ignoring the document's structure [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "chunking_strategies.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.4140994331955203,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4355.49600000013
+      },
+      {
+        "example_id": "chunking-003",
+        "query_type": "short",
+        "question": "What is chunk overlap and how large is it usually?",
+        "answer": "Chunk overlap is a technique where the last part of one chunk is repeated at the start of the next chunk, typically 10 to 20 percent of the chunk size [1]. This ensures that facts on boundaries are retrievable from at least one chunk [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "chunking_strategies.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.8905046776210269,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4625.114708999718
+      },
+      {
+        "example_id": "embeddings-001",
+        "query_type": "short",
+        "question": "Why must queries and documents be embedded with the same model?",
+        "answer": "Queries and documents must be embedded with the same model because vectors from different models live in different spaces, making comparisons meaningless and leading to inaccurate scores [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "embeddings.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9999999999999997,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4455.953790999956
+      },
+      {
+        "example_id": "embeddings-002",
+        "query_type": "paraphrase",
+        "question": "My semantic search misses exact error codes and product numbers. What can fix that?",
+        "answer": "Use hybrid search, which combines dense vectors with keyword search such as BM25, to address the issue of missing exact matches like product codes or error numbers [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "embeddings.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.6468845538064147,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 3077.2096660002717
+      },
+      {
+        "example_id": "vectordb-001",
+        "query_type": "short",
+        "question": "What is HNSW?",
+        "answer": "HNSW stands for Hierarchical Navigable Small World, which is a graph indexing structure used in vector databases for efficient similarity search [5].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "rag_overview.md"
+        ],
+        "scores": {
+          "faithfulness": 0.0,
+          "answer_relevance": 0.9481560968720797,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 0.0,
+        "unsupported_citations": [
+          [
+            5,
+            "HNSW stands for Hierarchical Navigable Small World, which is a graph indexing structure used in vector databases for efficient similarity search."
+          ]
+        ],
+        "generation_ms": 4146.384790999946
+      },
+      {
+        "example_id": "vectordb-002",
+        "query_type": "short",
+        "question": "When should I use Chroma and when Qdrant?",
+        "answer": "Use Chroma for local development, notebooks, and tests due to its embedded nature and simplicity [1]. Use Qdrant for production environments because it runs as a separate service, supports rich payload filtering, and offers horizontal scaling [2].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "vector_databases.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.07821543990826181,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4627.434625000205
+      },
+      {
+        "example_id": "rerank-001",
+        "query_type": "short",
+        "question": "What is the difference between a bi-encoder and a cross-encoder?",
+        "answer": "A bi-encoder encodes the query and each document separately, allowing for fast computation but losing fine-grained interaction between the query and document [2]. A cross-encoder reads the query and one candidate document together in a single pass, providing more accurate relevance scores but requiring a separate computation for each query-document pair [2].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "reranking.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9999999999999996,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 5410.033707999901
+      },
+      {
+        "example_id": "rerank-002",
+        "query_type": "paraphrase",
+        "question": "How do you combine fast vector search with a slower but more accurate relevance model?",
+        "answer": "You combine fast vector search with a slower but more accurate relevance model by first using the vector database to retrieve a larger candidate set, such as the top 20 or 50 chunks, and then using a cross-encoder to score each candidate and select the best few, such as the top 5, for the prompt [4].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "reranking.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9999999999999994,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 5811.080917000254
+      },
+      {
+        "example_id": "retrieval-001",
+        "query_type": "short",
+        "question": "What does Mean Reciprocal Rank measure?",
+        "answer": "Mean Reciprocal Rank (MRR) measures how high the first relevant document appears in the ranked results [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "retrieval_metrics.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.8667474434258967,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 3403.5822910000206
+      },
+      {
+        "example_id": "retrieval-002",
+        "query_type": "short",
+        "question": "What is the difference between precision@k and recall@k?",
+        "answer": "Precision@k is the number of relevant documents in the top k divided by the number of documents retrieved in the top k, measuring how much noise reaches the prompt [1]. Recall@k is the number of relevant documents in the top k divided by the total number of relevant documents, measuring whether the sources needed for the answer were found at all [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "retrieval_metrics.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9529669238968143,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 5785.814957999719
+      },
+      {
+        "example_id": "retrieval-003",
+        "query_type": "paraphrase",
+        "question": "Which metric rewards putting several relevant documents near the top of the list?",
+        "answer": "The NDCG@k metric rewards putting several relevant documents near the top of the list [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "retrieval_metrics.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.48552315204924135,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 0.0,
+        "unsupported_citations": [
+          [
+            1,
+            "The NDCG@k metric rewards putting several relevant documents near the top of the list."
+          ]
+        ],
+        "generation_ms": 3470.348959000148
+      },
+      {
+        "example_id": "generation-001",
+        "query_type": "short",
+        "question": "What is faithfulness in RAG evaluation?",
+        "answer": "Faithfulness in RAG evaluation measures whether every claim in the answer is supported by the retrieved context. A common method splits the answer into individual claims and checks each one against the context; the score is the share of supported claims [5].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "generation_metrics.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9529318984132488,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4585.94520799943
+      },
+      {
+        "example_id": "generation-002",
+        "query_type": "paraphrase",
+        "question": "Can an answer be correct but still score badly on groundedness?",
+        "answer": "Yes, an answer can be correct in the real world but still score badly on groundedness if its facts are derived from the model's memory rather than the retrieved context [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "generation_metrics.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.8530208338094369,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4326.046500000302
+      },
+      {
+        "example_id": "judge-001",
+        "query_type": "short",
+        "question": "What biases does an LLM judge have?",
+        "answer": "An LLM judge has known biases such as self-preference bias, position bias, and verbosity bias [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "llm_as_judge.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9472191930102326,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 3769.81191699997
+      },
+      {
+        "example_id": "golden-001",
+        "query_type": "short",
+        "question": "Why label relevance per document instead of per chunk?",
+        "answer": "Labeling relevance per document instead of per chunk ensures the dataset remains valid even when the chunking strategy changes, as retrieved chunks are mapped back to their source document before scoring [3]. This approach also simplifies the labeling process by focusing on the document level rather than individual chunks [3].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "golden_datasets.md"
+        ],
+        "scores": {
+          "faithfulness": 0.8,
+          "answer_relevance": 0.9621333992373217,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 0.5,
+        "unsupported_citations": [
+          [
+            3,
+            "This approach also simplifies the labeling process by focusing on the document level rather than individual chunks."
+          ]
+        ],
+        "generation_ms": 5097.479582999767
+      },
+      {
+        "example_id": "golden-002",
+        "query_type": "paraphrase",
+        "question": "How many examples should a first evaluation set have?",
+        "answer": "A first evaluation set should start with 50 to 100 carefully reviewed examples [2].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "golden_datasets.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9897741191126008,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 3475.426250000055
+      },
+      {
+        "example_id": "gate-001",
+        "query_type": "short",
+        "question": "How does an evaluation gate block a regression from merging?",
+        "answer": "An evaluation gate blocks a regression from merging by running the golden dataset through the pipeline on every pull request. If any metric computed from the retrieval and generation processes falls below its minimum threshold, the check fails, and the merge is blocked [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "ci_evaluation_gates.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.6891393283123998,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4437.215124999966
+      },
+      {
+        "example_id": "observability-001",
+        "query_type": "short",
+        "question": "What is knowledge-base drift?",
+        "answer": "Knowledge-base drift happens when documents are added, removed, or go out of date [4].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "golden_datasets.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9999999999999994,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 0.0,
+        "unsupported_citations": [
+          [
+            4,
+            "Knowledge-base drift happens when documents are added, removed, or go out of date."
+          ]
+        ],
+        "generation_ms": 3514.4475830002193
+      },
+      {
+        "example_id": "cost-001",
+        "query_type": "short",
+        "question": "Why check the latency budget at p95 instead of the average?",
+        "answer": "Checking the latency budget at the 95th percentile (p95) instead of the average ensures that the target accounts for the slow requests that users actually notice, as the average can hide these delays [1].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "cost_and_latency.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.821509055859981,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4715.853083000184
+      },
+      {
+        "example_id": "security-001",
+        "query_type": "paraphrase",
+        "question": "How do you stop an HR assistant from showing one employee's salary to another?",
+        "answer": "Enforce permissions inside the vector search using metadata filters such as the user's groups, so restricted chunks are never retrieved [1]. This ensures that an HR assistant cannot show one employee's salary to another.",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "security_governance.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.04995086540572857,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4547.553792000144
+      },
+      {
+        "example_id": "citations-001",
+        "query_type": "short",
+        "question": "How are citations added to a RAG answer?",
+        "answer": "Citations are added to a RAG answer by including numbered context blocks in the prompt, such as [1], [2], [3], and instructing the model to cite the supporting block after each claim using the same numbers [5].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "prompting_with_citations.md",
+          "generation_metrics.md",
+          "rag_overview.md"
+        ],
+        "scores": {
+          "faithfulness": 0.8,
+          "answer_relevance": 0.9999999999999997,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 0.25,
+        "unsupported_citations": [
+          [
+            1,
+            "Citations are added to a RAG answer by including numbered context blocks in the prompt, such as,,, and instructing the model to cite the supporting block after each claim using the same numbers."
+          ],
+          [
+            3,
+            "Citations are added to a RAG answer by including numbered context blocks in the prompt, such as,,, and instructing the model to cite the supporting block after each claim using the same numbers."
+          ],
+          [
+            5,
+            "Citations are added to a RAG answer by including numbered context blocks in the prompt, such as,,, and instructing the model to cite the supporting block after each claim using the same numbers."
+          ]
+        ],
+        "generation_ms": 4770.131916000537
+      },
+      {
+        "example_id": "multihop-001",
+        "query_type": "multi_hop",
+        "question": "Why is metadata filtering during vector search important for security?",
+        "answer": "Metadata filtering during vector search is important for security because it ensures that restricted chunks are never retrieved, preventing unauthorized access to sensitive information such as employee salaries [1]. This approach enforces permissions inside the vector search, making it more secure than filtering after retrieval, which can expose restricted content if skipped [1][2].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "security_governance.md",
+          "vector_databases.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9487787732443923,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4920.04229199938
+      },
+      {
+        "example_id": "multihop-002",
+        "query_type": "multi_hop",
+        "question": "Which retrieval metrics does re-ranking mainly improve, and what do they measure?",
+        "answer": "Re-ranking mainly improves ranking-sensitive metrics such as MRR and NDCG. MRR measures how high the first relevant document appears in the ranked results, while NDCG rewards relevant documents that appear near the top of the list [2].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "reranking.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.8416602045162994,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4848.064207999414
+      },
+      {
+        "example_id": "multihop-003",
+        "query_type": "multi_hop",
+        "question": "Why do generation metrics need a tolerance in the CI gate?",
+        "answer": "Generation metrics need a tolerance in the CI gate because they involve an LLM judge, which can vary slightly between runs and costs money to execute [1]. A tolerance allows for small variations before failing, ensuring stability and cost-effectiveness.",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "ci_evaluation_gates.md"
+        ],
+        "scores": {
+          "faithfulness": 0.7142857142857143,
+          "answer_relevance": 0.9999999999999997,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 4645.239749999746
+      },
+      {
+        "example_id": "multihop-004",
+        "query_type": "multi_hop",
+        "question": "How should confirmed production failures feed back into offline evaluation?",
+        "answer": "Confirmed production failures should be added to the golden dataset so that the next evaluation run includes these cases, ensuring the system is tested against real-world issues [5]. This integration helps maintain the relevance and effectiveness of offline evaluation [5].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "production_observability.md"
+        ],
+        "scores": {
+          "faithfulness": 0.6,
+          "answer_relevance": 0.5304367130560352,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 0.5,
+        "unsupported_citations": [
+          [
+            5,
+            "This integration helps maintain the relevance and effectiveness of offline evaluation."
+          ]
+        ],
+        "generation_ms": 4316.005333000248
+      },
+      {
+        "example_id": "multihop-005",
+        "query_type": "multi_hop",
+        "question": "How does the number of retrieved chunks affect both answer cost and retrieval quality?",
+        "answer": "The number of retrieved chunks affects answer cost and retrieval quality by increasing computational resources needed for processing and potentially introducing noise if irrelevant chunks are included [3]. Retrieval quality is primarily measured by recall@k, which ensures that the necessary sources for the answer are found [3].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "retrieval_metrics.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9576568846288366,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 1.0,
+        "unsupported_citations": [],
+        "generation_ms": 5035.468624999339
+      },
+      {
+        "example_id": "multihop-006",
+        "query_type": "multi_hop",
+        "question": "What should a RAG system do when the retrieved context does not contain the answer, and how is a wrong answer then measured?",
+        "answer": "A RAG system should say \"I don't know\" when the retrieved context does not contain the answer, instead of guessing [5]. A wrong answer is measured by answer relevance, which checks if the answer addresses the question, and by citation validity, which ensures citations support the claims [2].",
+        "refusal": false,
+        "invalid_citations": [],
+        "cited_doc_ids": [
+          "prompting_with_citations.md",
+          "generation_metrics.md"
+        ],
+        "scores": {
+          "faithfulness": 1.0,
+          "answer_relevance": 0.9096653697981113,
+          "context_precision": null,
+          "context_recall": null
+        },
+        "citation_validity": 0.5,
+        "unsupported_citations": [
+          [
+            2,
+            "A wrong answer is measured by answer relevance, which checks if the answer addresses the question, and by citation validity, which ensures citations support the claims."
+          ]
+        ],
+        "generation_ms": 4795.41750000044
+      }
+    ],
+    "failures": [],
+    "passed": true
+  }
+}
