@@ -74,6 +74,7 @@ class FakeChecker:
 class Fakes:
     pipeline: FakePipeline
     judge: FakeJudge
+    rebuilt: list[object] = field(default_factory=list)
 
 
 @pytest.fixture
@@ -85,6 +86,7 @@ def fakes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Fakes:
     monkeypatch.setattr(cli, "create_pipeline", lambda settings: built.pipeline)
     monkeypatch.setattr(cli, "create_judge", lambda settings: built.judge)
     monkeypatch.setattr(cli, "create_citation_checker", lambda settings: FakeChecker())
+    monkeypatch.setattr(cli, "rebuild_index_from_settings", built.rebuilt.append)
     return built
 
 
@@ -182,3 +184,30 @@ def test_create_judge_builds_ragas_judge_with_the_project_embedder(
 
     assert judge == "judge"
     assert calls == ["embedder"]
+
+
+def test_save_baseline_writes_generation_json(fakes: Fakes, tmp_path: Path) -> None:
+    (tmp_path / "data" / "raw").mkdir(parents=True)
+
+    assert run(tmp_path, "--save-baseline") == 0
+
+    saved = json.loads((tmp_path / "baselines" / "generation.json").read_text(encoding="utf-8"))
+    assert saved["report"]["judge_model"] == "gemma3:12b"
+    assert saved["fingerprint"]["judge_model"] == "gemma3:12b"
+    assert len(fakes.rebuilt) == 1  # answered from an index built with the current settings
+    report = json.loads((tmp_path / "gen.json").read_text(encoding="utf-8"))
+    assert report["fingerprint"] == saved["fingerprint"]  # so the report can be adopted later
+
+
+def test_a_plain_run_does_not_rebuild_the_index(fakes: Fakes, tmp_path: Path) -> None:
+    run(tmp_path)
+
+    assert fakes.rebuilt == []
+
+
+def test_save_baseline_refuses_a_limited_run(fakes: Fakes, tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        run(tmp_path, "--limit", "1", "--save-baseline")
+
+    assert exit_info.value.code == 2
+    assert not (tmp_path / "baselines").exists()
