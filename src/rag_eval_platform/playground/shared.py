@@ -42,7 +42,7 @@ FIRST_OUTPUT_WAIT = "first_output_wait"
 HISTORY, PENDING_REPLACE = "history", "pending_replace"
 FRAMES, FRAME_SECONDS = 8, 0.05
 TAB_LABELS = [
-    "Overview", "① Ingest", "② Embed", "③ Retrieve", "④ Generate", "⑤ Evaluate", "⑥ Gate",
+    "Overview", "① Ingest", "② Embed", "③ Retrieve", "④ Generate", "⑤ Evaluate", "⑥ Gate", "⑦ API",
 ]  # fmt: skip
 GATE_RUN = "gate_run"  # the what-if gate's result, saved before the next st.* call
 
