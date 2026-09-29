@@ -55,7 +55,7 @@
 | | `observability/dashboard.py` | Streamlit dashboard: scores over time, recent queries, latency. |
 | Config | `config/settings.py` | Typed settings loaded from environment variables / `.env`. |
 | | `config/logging_config.py` | Process-wide logging setup. |
-| API | `api/main.py`, `api/routes.py` | FastAPI app: `GET /health`, `POST /query`. |
+| API | `api/main.py`, `api/routes.py`, `api/schemas.py`, `api/security.py`, `api/health.py` | FastAPI app: `GET /health`, `POST /query`, `POST /query/stream`; validation, API key, rate limit. |
 
 ## Request flow
 
@@ -122,12 +122,12 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | `astral-sh/setup-uv` action | Install uv and cache dependencies in CI | in use |
 | | pytest-cov | Coverage report in CI | in use |
 | | gitleaks (GitHub Action) | Fail CI if a secret is committed | in use |
-| **6. API and deployment** | FastAPI | `GET /health`, `POST /query` | chosen |
-| | Uvicorn | ASGI server for the API | proposed |
-| | httpx | FastAPI `TestClient` for integration tests | proposed |
-| | Docker / Docker Compose | Local infrastructure (Chroma now); API image later | in use |
+| **6. API and deployment** | FastAPI | `GET /health`, `POST /query`, `POST /query/stream` (server-sent events) | in use |
+| | Uvicorn | ASGI server for the API (`scripts/serve_api.py`, the Docker image) | in use |
+| | httpx | FastAPI `TestClient` for API tests (dev group) | in use |
+| | Docker / Docker Compose | Local infrastructure: Chroma, and the API image under the `api` profile | in use |
 | | chromadb-admin (community image, `ui` profile) | Browse Chroma collections and chunks in a web UI | in use |
-| | Streamlit (`ui` group) | The visual playground: a chat beside seven lazy tabs (Overview, one per phase, ⑥ Gate), upload PDFs, tune every setting, judge an answer, run the gate | in use |
+| | Streamlit (`ui` group) | The visual playground: a chat beside eight lazy tabs (Overview, one per phase, ⑥ Gate, ⑦ API), upload PDFs, tune every setting, judge an answer, run the gate, call the API | in use |
 | | Plotly (`ui` group) | Animated playground charts: meaning map (2-D/3-D), similarity, re-ranking, funnel, gauges, reports | in use |
 | | JupyterLab + pandas (`notebook` group) | `notebooks/exploration.ipynb`: inspect chunks, ask questions, run experiments | in use |
 | **7. Observability** | Python `logging` (JSON lines) | One structured line per answered question (chunks, citations, tokens, latency) | in use |
@@ -138,7 +138,7 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 
 ## Deployment
 
-- `docker/docker-compose.yml` runs the local infrastructure: Chroma on `localhost:8001`, with data in a named volume. `docker/Dockerfile` (planned) will build the API image, and the API will be added to the same compose file.
+- `docker/docker-compose.yml` runs the local infrastructure: Chroma on `localhost:8001`, with data in a named volume. `docker/Dockerfile` builds the API image (multi-stage uv, CPU torch, non-root, embedding model baked in, `/health` health check); the `api` service runs it under the `api` profile on `localhost:8000`, reaching Chroma at `chroma:8000` and Ollama on the host at `host.docker.internal:11434`. CI builds the image and checks `/health`.
 - The API is stateless; all state lives in the vector store and the observability log.
 
 ## Security and governance
