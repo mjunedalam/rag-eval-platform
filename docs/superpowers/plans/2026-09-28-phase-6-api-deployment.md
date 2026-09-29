@@ -64,13 +64,13 @@ def test_an_empty_api_key_means_auth_is_off(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_an_api_key_is_kept_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RAG_API_KEY", "s3cret-value")
+    monkeypatch.setenv("RAG_API_KEY", "fake-test-value")
 
     settings = Settings(_env_file=None)
 
     assert settings.api_key is not None
-    assert settings.api_key.get_secret_value() == "s3cret-value"
-    assert "s3cret-value" not in repr(settings)
+    assert settings.api_key.get_secret_value() == "fake-test-value"
+    assert "fake-test-value" not in repr(settings)
 ```
 
 (Use the file's existing imports; add `import pytest` if missing.)
@@ -306,9 +306,9 @@ def test_no_expected_key_means_everyone_is_allowed() -> None:
 
 
 def test_the_key_must_match_exactly() -> None:
-    assert check_api_key("s3cret", "s3cret")
-    assert not check_api_key("s3cre", "s3cret")
-    assert not check_api_key(None, "s3cret")
+    assert check_api_key("fake-key", "fake-key")
+    assert not check_api_key("fake-ke", "fake-key")
+    assert not check_api_key(None, "fake-key")
 
 
 class Clock:
@@ -767,14 +767,14 @@ def test_invalid_requests_are_422_without_calling_the_model(body: dict[str, obje
 
 
 def test_api_key_is_required_when_configured() -> None:
-    api = client(key="s3cret")
+    api = client(key="fake-key")
 
     assert api.post("/query", json={"question": "q"}).status_code == 401
     assert (
         api.post("/query", json={"question": "q"}, headers={"X-API-Key": "nope"}).status_code == 401
     )
     assert (
-        api.post("/query", json={"question": "q"}, headers={"X-API-Key": "s3cret"}).status_code
+        api.post("/query", json={"question": "q"}, headers={"X-API-Key": "fake-key"}).status_code
         == 200
     )
 
@@ -1323,13 +1323,13 @@ from rag_eval_platform.playground.api_view import (
 def test_curl_command_quotes_the_body_and_masks_the_key() -> None:
     body = {"question": "What's MRR?", "answer_style": "concise"}
 
-    shown = curl_command("http://127.0.0.1:8000", body, api_key="s3cret-long-key")
-    real = curl_command("http://127.0.0.1:8000", body, api_key="s3cret-long-key", reveal_key=True)
+    shown = curl_command("http://127.0.0.1:8000", body, api_key="fake-api-key")
+    real = curl_command("http://127.0.0.1:8000", body, api_key="fake-api-key", reveal_key=True)
 
     assert shown.startswith("curl -s -X POST http://127.0.0.1:8000/query")
-    assert "s3cret-long-key" not in shown
-    assert "X-API-Key: s3cr…" in shown
-    assert "X-API-Key: s3cret-long-key" in real
+    assert "fake-api-key" not in shown
+    assert "X-API-Key: fake…" in shown
+    assert "X-API-Key: fake-api-key" in real
     assert "'\"'\"'" in shown  # the apostrophe in What's is shell-quoted
     assert "/query/stream" in curl_command("http://x", body, api_key=None, stream=True)
     assert "X-API-Key" not in curl_command("http://x", body, api_key=None)

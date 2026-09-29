@@ -19,13 +19,13 @@ from rag_eval_platform.playground.api_view import (
 def test_curl_command_quotes_the_body_and_masks_the_key() -> None:
     body = {"question": "What's MRR?", "answer_style": "concise"}
 
-    shown = curl_command("http://127.0.0.1:8000", body, api_key="s3cret-long-key")
-    real = curl_command("http://127.0.0.1:8000", body, api_key="s3cret-long-key", reveal_key=True)
+    shown = curl_command("http://127.0.0.1:8000", body, api_key="fake-api-key")
+    real = curl_command("http://127.0.0.1:8000", body, api_key="fake-api-key", reveal_key=True)
 
     assert shown.startswith("curl -s -X POST http://127.0.0.1:8000/query")
-    assert "s3cret-long-key" not in shown
-    assert "X-API-Key: s3cr…" in shown
-    assert "X-API-Key: s3cret-long-key" in real
+    assert "fake-api-key" not in shown
+    assert "X-API-Key: fake…" in shown
+    assert "X-API-Key: fake-api-key" in real
     assert "'\"'\"'" in shown  # the apostrophe in What's is shell-quoted
     assert "/query/stream" in curl_command("http://x", body, api_key=None, stream=True)
     assert "X-API-Key" not in curl_command("http://x", body, api_key=None)

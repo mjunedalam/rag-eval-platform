@@ -195,10 +195,10 @@ def test_an_empty_api_key_means_auth_is_off(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_an_api_key_is_kept_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RAG_API_KEY", "s3cret-value")
+    monkeypatch.setenv("RAG_API_KEY", "fake-test-value")
 
     settings = Settings(_env_file=None)
 
     assert settings.api_key is not None
-    assert settings.api_key.get_secret_value() == "s3cret-value"
-    assert "s3cret-value" not in repr(settings)
+    assert settings.api_key.get_secret_value() == "fake-test-value"
+    assert "fake-test-value" not in repr(settings)

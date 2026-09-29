@@ -96,14 +96,14 @@ def test_invalid_requests_are_422_without_calling_the_model(body: dict[str, obje
 
 
 def test_api_key_is_required_when_configured() -> None:
-    api = client(key="s3cret")
+    api = client(key="fake-key")
 
     assert api.post("/query", json={"question": "q"}).status_code == 401
     assert (
         api.post("/query", json={"question": "q"}, headers={"X-API-Key": "nope"}).status_code == 401
     )
     assert (
-        api.post("/query", json={"question": "q"}, headers={"X-API-Key": "s3cret"}).status_code
+        api.post("/query", json={"question": "q"}, headers={"X-API-Key": "fake-key"}).status_code
         == 200
     )
 

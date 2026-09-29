@@ -9,9 +9,9 @@ def test_no_expected_key_means_everyone_is_allowed() -> None:
 
 
 def test_the_key_must_match_exactly() -> None:
-    assert check_api_key("s3cret", "s3cret")
-    assert not check_api_key("s3cre", "s3cret")
-    assert not check_api_key(None, "s3cret")
+    assert check_api_key("fake-key", "fake-key")
+    assert not check_api_key("fake-ke", "fake-key")
+    assert not check_api_key(None, "fake-key")
 
 
 class Clock:
