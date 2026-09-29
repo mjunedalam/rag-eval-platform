@@ -7,6 +7,7 @@ cited, latency and token counts), which is the raw material for observability.
 import logging
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from rag_eval_platform.config.settings import Settings
@@ -32,17 +33,30 @@ class _Generator(Protocol):
     ) -> AnswerStream: ...
 
 
+@dataclass(frozen=True)
+class TimedAnswer:
+    answer: Answer
+    retrieve_ms: float
+    total_ms: float
+
+
 class RagPipeline:
     def __init__(self, retriever: _Retriever, generator: _Generator) -> None:
         self.retriever = retriever
         self.generator = generator
 
     def ask(self, question: str) -> Answer:
+        return self.ask_timed(question).answer
+
+    def ask_timed(self, question: str) -> TimedAnswer:
+        """Answer and report how long retrieval and the whole request took."""
         started = time.perf_counter()
         results = self.retriever.retrieve(question)
+        retrieved = time.perf_counter()
         answer = self.generator.generate(question, results)
-        _log_answer(answer, total_ms=(time.perf_counter() - started) * 1000)
-        return answer
+        total_ms = (time.perf_counter() - started) * 1000
+        _log_answer(answer, total_ms=total_ms)
+        return TimedAnswer(answer, (retrieved - started) * 1000, total_ms)
 
     def ask_stream(self, question: str) -> AnswerStream:
         """Retrieve now, then stream the answer; the log line is written once it finishes."""

@@ -361,5 +361,8 @@ def client_options(
     return options, "Check OPENAI_API_KEY and the model name."
 
 
-def create_generator(settings: Settings) -> Generator:
-    return Generator(OpenAICompatibleClient.from_settings(settings))
+def create_generator(settings: Settings, style: AnswerStyle = "concise") -> Generator:
+    """The generator for a style; the detailed style gets its larger token limit."""
+    if style == "detailed":
+        settings = settings.model_copy(update={"llm_max_tokens": settings.llm_detailed_max_tokens})
+    return Generator(OpenAICompatibleClient.from_settings(settings), style)

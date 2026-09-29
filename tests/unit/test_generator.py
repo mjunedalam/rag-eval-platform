@@ -14,6 +14,7 @@ from rag_eval_platform.generation.generator import (
     GenerationError,
     Generator,
     OpenAICompatibleClient,
+    create_generator,
     parse_citation_numbers,
     strip_thinking,
 )
@@ -413,3 +414,23 @@ class TestAnswerStream:
     def test_rejects_blank_question(self) -> None:
         with pytest.raises(ValueError, match="question"):
             Generator(FakeLlm("x")).stream(" ", RESULTS)
+
+
+def test_create_generator_uses_the_style_and_its_token_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[Settings] = []
+
+    def fake_from_settings(settings: Settings) -> FakeLlm:
+        seen.append(settings)
+        return FakeLlm("x")
+
+    monkeypatch.setattr(OpenAICompatibleClient, "from_settings", staticmethod(fake_from_settings))
+    settings = Settings(_env_file=None)
+
+    concise = create_generator(settings)
+    detailed = create_generator(settings, "detailed")
+
+    assert (concise.style, detailed.style) == ("concise", "detailed")
+    assert seen[0].llm_max_tokens == settings.llm_max_tokens
+    assert seen[1].llm_max_tokens == settings.llm_detailed_max_tokens
