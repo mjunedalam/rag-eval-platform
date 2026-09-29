@@ -1,0 +1,15 @@
+.git
+.venv
+.env
+.env.*
+!.env.example
+data/playground
+data/processed
+reports
+notebooks
+.superpowers
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
