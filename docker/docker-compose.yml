@@ -35,5 +35,35 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  api:
+    # The RAG API (Phase 6). Start with:
+    #   docker compose -f docker/docker-compose.yml --profile api up -d --build
+    # Ollama runs natively on the host (GPU); the container reaches it through
+    # host.docker.internal. Seed Chroma first (scripts/seed_vector_store.py).
+    image: rag-eval-api  # the same tag as `docker build -f docker/Dockerfile -t rag-eval-api .`
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    profiles: ["api"]
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+    # The repository's .env (API key, models, top-k...) reaches the container; the values
+    # below override the ones that must differ inside Docker.
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      RAG_CHROMA_HOST: chroma
+      RAG_CHROMA_PORT: "8000"
+      RAG_OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
+      RAG_API_HOST: 0.0.0.0
+      RAG_API_PORT: "8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      chroma:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   chroma-data:

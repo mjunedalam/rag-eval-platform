@@ -35,6 +35,7 @@ def test_app_renders_without_errors() -> None:
         "④ Generate",
         "⑤ Evaluate",
         "⑥ Gate",
+        "⑦ API",
     ]
 
 

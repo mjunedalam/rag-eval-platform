@@ -1238,6 +1238,22 @@ wheels = [
 ]
 
 [[package]]
+name = "fastapi"
+version = "0.141.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8a/02/91e3416a8fdd715abb903a952a6bec7cdd8d14eed55d415fc8595524c319/fastapi-0.141.1.tar.gz", hash = "sha256:e8822fc40db1e1858054d7a949a888695bc9bdce70139178e33bd2871a453ca1", size = 425799, upload-time = "2026-07-29T17:18:05.568Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/03/10388a42375ee7e4ac9b94eb2c5c569c8b5795e377e701c9ac3ad63de890/fastapi-0.141.1-py3-none-any.whl", hash = "sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3", size = 131954, upload-time = "2026-07-29T17:18:04.364Z" },
+]
+
+[[package]]
 name = "fastjsonschema"
 version = "2.22.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4780,12 +4796,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "chromadb-client" },
+    { name = "fastapi" },
     { name = "fonttools" },
     { name = "langchain-text-splitters" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pydantic-settings" },
     { name = "pypdf" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -4805,6 +4823,7 @@ openai = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -4825,6 +4844,7 @@ ui = [
 requires-dist = [
     { name = "chromadb-client", specifier = "==1.5.9" },
     { name = "deepeval", marker = "extra == 'evaluation'", specifier = ">=4.2.6" },
+    { name = "fastapi", specifier = ">=0.141" },
     { name = "fonttools", specifier = ">=4.66.0" },
     { name = "langchain-community", marker = "extra == 'evaluation'", specifier = "<0.4.2" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -4836,11 +4856,13 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'local-embeddings'", specifier = ">=6.1.0" },
     { name = "torch", marker = "sys_platform == 'linux' and extra == 'local-embeddings'", specifier = ">=2.14.0", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'linux' and extra == 'local-embeddings'", specifier = ">=2.14.0" },
+    { name = "uvicorn", specifier = ">=0.54" },
 ]
 provides-extras = ["local-embeddings", "openai", "evaluation"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx", specifier = ">=0.28" },
     { name = "mypy", specifier = ">=2.3.1" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=7.1.0" },

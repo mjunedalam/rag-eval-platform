@@ -72,6 +72,46 @@ jobs:
         # Model-based tests skip here (no local-embeddings extra); Chroma tests run.
         run: uv run pytest -m integration -rs
 
+  api-image:
+    name: API image
+    runs-on: ubuntu-latest
+    services:
+      chroma:
+        image: chromadb/chroma:1.5.9
+        ports:
+          - 8001:8000
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          tags: rag-eval-api:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run it and check /health
+        # No Ollama in CI, so /health is expected to be 503 with the llm check failing.
+        run: |
+          docker run -d --name api --network host \
+            -e RAG_CHROMA_HOST=localhost -e RAG_CHROMA_PORT=8001 rag-eval-api:ci
+          for i in $(seq 1 45); do
+            code=$(curl -s -o health.json -w '%{http_code}' localhost:8000/health || true)
+            if [ "$code" = 200 ] || [ "$code" = 503 ]; then break; fi
+            sleep 2
+          done
+          cat health.json
+          python3 -c "import json; b=json.load(open('health.json')); assert b['checks']['chroma']['ok'], b; assert 'llm' in b['checks'], b"
+
+      - name: Container logs
+        if: failure()
+        run: docker logs api
+
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest

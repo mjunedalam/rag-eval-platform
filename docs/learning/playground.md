@@ -1,6 +1,6 @@
 # The visual playground, explained simply
 
-The playground is where every idea from Phases 1–5 becomes something you can **see move**. You upload your own documents, ask one question, and the tabs show what each phase did with it. The ⑥ Gate tab shows how CI decides whether a change may merge.
+The playground is where every idea from Phases 1–6 becomes something you can **see move**. You upload your own documents, ask one question, and the tabs show what each phase did with it. The ⑥ Gate tab shows how CI decides whether a change may merge.
 
 ```bash
 uv run streamlit run src/rag_eval_platform/playground/app.py    # http://localhost:8501
@@ -38,6 +38,10 @@ mindmap
       Checks board
       What-if run
       Flipped questions
+    ⑦ API
+      curl command
+      JSON response
+      Live events
 ```
 
 ---
@@ -141,6 +145,7 @@ Amber = the tab you're on, green = phases with data, grey = not done yet (e.g. "
 | **④ Generate** | The **prompt** is rules + numbered sources + question; **citations** point to sources | Set *Top-k* to 1 and ask a broad question; check whether the model refuses or cites only `[1]` |
 | **⑤ Evaluate** | An **LLM judge** grades faithfulness, relevance and citation validity | Judge an answer, then ask something your documents don't cover and compare |
 | **⑥ Gate** | The **CI gate**: every change is scored on the golden set before it merges | Run the gate with the defaults (pass), then drag *Chunk size* to 200 and run again (blocked: the generation baseline is stale) |
+| **⑦ API** | The same pipeline over **HTTP**, for other programs | Start the API, press Send, then copy the curl command into a terminal; turn on Stream to watch the events |
 | **Overview** | The whole chain at once | Keep it open while you change settings and ask again |
 
 ### ① Ingest: from files to chunks
@@ -193,6 +198,10 @@ Bars turn green at 80%, amber at 50%, red below. The header shows session KPIs (
 **Run the gate** rebuilds the sample corpus (`data/raw/`) with your sidebar's chunking, top-k and re-ranking in a separate `gate_preview` collection, scores the 30 golden questions, and applies the same rules as CI: thresholds, a maximum drop of 0.02 from the committed baseline, and a fresh generation baseline. The flow diagram turns green or red step by step, the gauges show every score against its minimum, and **Questions that flipped** lists which questions went from hit to miss. See [Phase 5](phase-5.md) for the rules.
 
 ---
+
+### ⑦ API: the same answer, over HTTP
+
+With the API running (`uv run python scripts/serve_api.py`), **⑦ API** shows the request as a **curl** command you can paste into a terminal, sends it for real, and shows the status code, the time and the JSON. The flow diagram fills in with how long retrieval and generation took. **Stream** switches to `/query/stream` and shows the events as they arrive. See [Phase 6](phase-6.md).
 
 ## 3. How it works underneath
 

@@ -38,6 +38,7 @@ from rag_eval_platform.playground.shared import (
     sidebar,
 )
 from rag_eval_platform.playground.tabs import (
+    api,
     chat_panel,
     embed,
     evaluate,
@@ -56,6 +57,7 @@ RENDERERS: dict[str, Callable[[TabContext], None]] = {
     "④ Generate": generate.render,
     "⑤ Evaluate": evaluate.render,
     "⑥ Gate": gate.render,
+    "⑦ API": api.render,
 }
 
 

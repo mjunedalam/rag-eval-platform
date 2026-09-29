@@ -63,8 +63,8 @@ Most RAG demos stop at "it answered". In production the hard questions are diffe
 | 3 · Generation | Local LLM via Ollama, cited answers, refusal, end-to-end pipeline, **Streamlit playground** | ✅ Done |
 | 4 · Generation evaluation | RAGAS / DeepEval, local LLM judge (`gemma3:12b`), faithfulness, answer relevance, citation validity | ✅ Done |
 | 5 · CI/CD evaluation gate | Every PR scored on the golden set: live retrieval, committed + fingerprinted generation baseline, before/after PR comment, **⑥ Gate** playground tab | ✅ Done |
-| 6 · API and deployment | FastAPI (`/health`, `/query`), Docker image | 🔜 Next |
-| 7 · Observability | Dashboard of scores, latency and cost over time | Planned |
+| 6 · API and deployment | FastAPI (`/health`, `/query`, streaming `/query/stream`), API key + rate limit, Docker image with a compose profile, **⑦ API** playground tab | ✅ Done |
+| 7 · Observability | Dashboard of scores, latency and cost over time | 🔜 Next |
 | 8 · Security and governance | PII masking, retrieval-time access control, audit logging | Planned |
 
 ```mermaid
@@ -247,7 +247,7 @@ Details: [docs/architecture.md](docs/architecture.md) · [docs/evaluation_method
 | **UI & exploration** | Streamlit playground with Plotly charts and Graphviz diagrams, JupyterLab notebook + pandas + matplotlib, chromadb-admin web UI | Streamlit observability dashboard |
 | **Quality** | Pytest (unit + integration), pytest-cov, Ruff (lint + format), mypy (strict) | |
 | **CI/CD** | GitHub Actions: lint, types, unit tests, integration tests against a Chroma service container, gitleaks secret scan, **evaluation gate** (golden set on every PR, PR comment) | |
-| **Infrastructure** | Docker Compose (Chroma, optional admin UI) | FastAPI + Uvicorn, API Docker image |
+| **API & infrastructure** | FastAPI + Uvicorn (`/health`, `/query`, `/query/stream`), Docker Compose (Chroma, optional admin UI, API image under the `api` profile) | |
 | **Security** | Secrets only in git-ignored `.env`, pre-commit and CI secret scanning, prompt-injection guard in the system prompt | Presidio PII masking, access control, audit logs |
 
 ```mermaid
@@ -388,6 +388,8 @@ uv run python scripts/run_ingestion.py       # data/raw -> data/processed/chunks
 uv run python scripts/seed_vector_store.py   # embed the chunks into Chroma
 uv run python scripts/run_evaluation.py      # golden-set scores vs thresholds
 uv run python scripts/run_gate.py            # the CI gate locally: exit 0 pass, 1 blocked, 2 error
+uv run python scripts/serve_api.py           # the HTTP API on http://127.0.0.1:8000 (docs at /docs)
+docker compose -f docker/docker-compose.yml --profile api up -d --build   # the API in Docker
 ```
 
 The gate (Phase 5) compares against the committed `baselines/`. After an intended change, save new ones with `--save-baseline` (see [Phase 5](docs/learning/phase-5.md)).
@@ -428,6 +430,7 @@ A visual learning tool: upload your own PDFs, Markdown or text, ask one question
 | **④ Generate** | The prompt as blocks; the answer with each `[n]` coloured like its source; invalid citations and refusals; where the time went |
 | **⑤ Evaluate** | **This session** (time, coverage and grounding for every question), "Judge this answer" (faithfulness, relevance, citation validity gauges and each citation's verdict), plus the golden-set reports |
 | **⑥ Gate** | The CI gate: the PR flow coloured by the result, gauges for every check, and **Run the gate** with your sidebar settings (a separate `gate_preview` collection), showing pass/block, baseline vs now by question type, and the questions that flipped |
+| **⑦ API** | The same pipeline over HTTP: API status, a request-flow diagram with timings, the request as a **curl** command, and **Send** for the real JSON response (status, latency) or a live **Stream** of events |
 
 ```mermaid
 flowchart LR
@@ -538,7 +541,7 @@ rag-eval-platform/
 │   ├── playground/      Streamlit app: core/visuals/query_visuals (logic), charts, tabs/ (UI)
 │   ├── pipeline.py      question -> retrieve -> generate -> answer
 │   └── ask.py           terminal command
-├── scripts/             run_ingestion · seed_vector_store · run_evaluation · run_generation_evaluation · run_gate · save_baseline · ask
+├── scripts/             run_ingestion · seed_vector_store · run_evaluation · run_generation_evaluation · run_gate · save_baseline · serve_api · ask
 ├── baselines/           committed retrieval.json + generation.json that the gate compares against
 ├── data/
 │   ├── raw/             14-document sample corpus (RAG and LLM evaluation)
@@ -562,6 +565,7 @@ rag-eval-platform/
 | [Learning: Phase 2 — Retrieval](docs/learning/phase-2.md) | Docker, vector databases, similarity, re-ranking, evaluation — explained simply, with a code walkthrough |
 | [Learning: Phase 3 — Generation](docs/learning/phase-3.md) | LLMs, prompts, citations, refusal, local models — explained simply, with a code walkthrough |
 | [Learning: Phase 4 — Generation evaluation](docs/learning/phase-4.md) | LLM-as-a-judge, faithfulness, answer relevance, citation validity, RAGAS and DeepEval — explained simply, with a code walkthrough |
+| [Learning: Phase 6 — API and deployment](docs/learning/phase-6.md) | What an API is, the request flow, endpoints, streaming events, safety basics, the Docker setup, and the ⑦ API tab |
 | [Learning: Phase 5 — Evaluation gate](docs/learning/phase-5.md) | Why a gate, what runs where, the rules, the fingerprint, updating baselines, and the ⑥ Gate tab |
 | [Learning: The visual playground](docs/learning/playground.md) | What each playground tab shows, what to try, and how it works underneath |
 | [Enterprise guide](<docs/RAG Pipeline Evaluation - Enterprise Guide.md>) | Background on RAG evaluation in enterprise settings |

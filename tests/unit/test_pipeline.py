@@ -172,3 +172,10 @@ class TestAskCommand:
 
         assert ask_module.main(["q?"]) == 1
         assert "connection dropped" in capsys.readouterr().err
+
+
+def test_ask_timed_reports_retrieval_and_total_time() -> None:
+    timed = make_pipeline().ask_timed("What is MRR?")
+
+    assert timed.answer.text == "MRR is the mean reciprocal rank [1]."
+    assert 0 <= timed.retrieve_ms <= timed.total_ms
