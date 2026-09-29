@@ -178,3 +178,27 @@ def test_overlap_must_be_smaller_than_chunk_size(monkeypatch: pytest.MonkeyPatch
 
 def test_get_settings_returns_cached_instance() -> None:
     assert get_settings() is get_settings()
+
+
+def test_api_defaults() -> None:
+    settings = Settings(_env_file=None)
+
+    assert (settings.api_host, settings.api_port) == ("127.0.0.1", 8000)
+    assert settings.api_key is None
+    assert settings.api_rate_limit == 30
+
+
+def test_an_empty_api_key_means_auth_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_API_KEY", "")
+
+    assert Settings(_env_file=None).api_key is None
+
+
+def test_an_api_key_is_kept_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_API_KEY", "s3cret-value")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.api_key is not None
+    assert settings.api_key.get_secret_value() == "s3cret-value"
+    assert "s3cret-value" not in repr(settings)

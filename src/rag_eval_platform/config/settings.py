@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
-from pydantic import AliasChoices, Field, SecretStr, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ChunkStrategy = Literal["fixed", "recursive", "semantic"]
@@ -96,8 +96,19 @@ class Settings(BaseSettings):
     # Evaluation gate: the most a retrieval metric may drop below the committed baseline.
     gate_max_drop: Score = 0.02
 
+    # API (Phase 6)
+    api_host: str = "127.0.0.1"
+    api_port: int = Field(default=8000, gt=0, lt=65536)
+    api_key: SecretStr | None = None  # RAG_API_KEY; empty means auth is off
+    api_rate_limit: int = Field(default=30, gt=0)  # requests per minute per client
+
     # Observability
     log_level: str = "INFO"
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def _empty_api_key_is_none(cls, value: object) -> object:
+        return None if value in ("", None) else value
 
     @model_validator(mode="after")
     def _check_chunk_overlap(self) -> Self:
