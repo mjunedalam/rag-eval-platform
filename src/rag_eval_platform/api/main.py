@@ -19,6 +19,9 @@ from rag_eval_platform.api.services import ApiServices, QueryPipeline
 from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.generation.generator import GenerationError, create_generator
 from rag_eval_platform.generation.prompt_templates import AnswerStyle
+from rag_eval_platform.observability.drift import DriftThresholds
+from rag_eval_platform.observability.logger import create_query_logger, create_store
+from rag_eval_platform.observability.store import ObserveStoreError, UnknownQueryError
 from rag_eval_platform.pipeline import RagPipeline
 from rag_eval_platform.retrieval.retriever import create_retriever
 from rag_eval_platform.retrieval.vector_store import VectorStoreError, create_vector_store
@@ -26,10 +29,14 @@ from rag_eval_platform.retrieval.vector_store import VectorStoreError, create_ve
 logger = logging.getLogger(__name__)
 
 _REQUEST_HINT = 'Send {"question": "...", "answer_style": "concise"}'
+_FEEDBACK_HINT = 'Send {"query_id": "...", "rating": "up" or "down", "comment": "..."}'
+_HINTS_BY_PATH: dict[str, str] = {"/feedback": _FEEDBACK_HINT}
 _FAILURES: dict[type[Exception], tuple[int, str]] = {
     GenerationError: (502, "Is Ollama running with the model pulled? See GET /health."),
     VectorStoreError: (503, "Start Chroma: docker compose -f docker/docker-compose.yml up -d"),
     OptionalDependencyError: (503, "Install the extras: uv sync --all-extras"),
+    UnknownQueryError: (404, "Use the query_id from a /query response"),
+    ObserveStoreError: (503, "Check RAG_OBSERVE_ENABLED and RAG_OBSERVE_DB"),
 }
 
 
@@ -63,13 +70,14 @@ def create_app(services: ApiServices) -> FastAPI:
         first = exc.errors()[0] if exc.errors() else {}
         where = ".".join(str(p) for p in first.get("loc", ()) if p != "body")
         message = f"Invalid request: {where} {first.get('msg', '')}".strip()
-        return _error(422, message, hint=_REQUEST_HINT)
+        hint = _HINTS_BY_PATH.get(request.url.path, _REQUEST_HINT)
+        return _error(422, message, hint=hint)
 
     for failure, (status, hint) in _FAILURES.items():
 
         def handler(request: Request, exc: Exception, status: int = status,
                     hint: str = hint) -> JSONResponse:  # fmt: skip
-            logger.warning("Query failed", extra={"error": str(exc), "status": status})
+            logger.warning("Request failed", extra={"error": str(exc), "status": status})
             return _error(status, str(exc), hint)
 
         app.add_exception_handler(failure, handler)
@@ -80,14 +88,16 @@ def create_app_from_settings(settings: Settings) -> FastAPI:
     """The real services: one retriever (models load once) shared by both answer styles."""
     retriever = create_retriever(settings)
     pipelines: dict[AnswerStyle, QueryPipeline] = {
-        style: RagPipeline(retriever, create_generator(settings, style))
+        style: RagPipeline(retriever, create_generator(settings, style),
+                           create_query_logger(settings, "api", style=style))
         for style in get_args(AnswerStyle)
-    }
+    }  # fmt: skip
     key = settings.api_key.get_secret_value() if settings.api_key else None
     services = ApiServices(
         pipelines=pipelines,
         checks={"chroma": chroma_check(create_vector_store(settings)), "llm": _llm_check(settings)},
         api_key=key, limiter=RateLimiter(settings.api_rate_limit),
+        store=create_store(settings), drift=DriftThresholds.from_settings(settings),
     )  # fmt: skip
     return create_app(services)
 

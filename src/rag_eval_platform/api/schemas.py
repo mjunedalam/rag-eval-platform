@@ -2,14 +2,16 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from rag_eval_platform.generation.prompt_templates import AnswerStyle
 from rag_eval_platform.pipeline import TimedAnswer
 
 MAX_QUESTION_CHARS = 2000
+MAX_COMMENT_CHARS = 500
 Question = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
                                             max_length=MAX_QUESTION_CHARS)]  # fmt: skip
+Comment = Annotated[str, StringConstraints(strip_whitespace=True, max_length=MAX_COMMENT_CHARS)]
 
 
 class QueryRequest(BaseModel):
@@ -53,6 +55,7 @@ class QueryResponse(BaseModel):
     input_tokens: int | None
     output_tokens: int | None
     timings: Timings
+    query_id: str | None = None
 
 
 class CheckOut(BaseModel):
@@ -63,11 +66,24 @@ class CheckOut(BaseModel):
 class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     checks: dict[str, CheckOut]
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ErrorResponse(BaseModel):
     error: str
     hint: str | None = None
+
+
+class FeedbackRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query_id: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
+    rating: Literal["up", "down"]
+    comment: Comment | None = None
+
+
+class FeedbackResponse(BaseModel):
+    id: str
 
 
 def to_response(timed: TimedAnswer) -> QueryResponse:
@@ -90,4 +106,5 @@ def to_response(timed: TimedAnswer) -> QueryResponse:
         timings=Timings(retrieve_ms=round(timed.retrieve_ms, 1),
                         generate_ms=round(answer.latency_ms, 1),
                         total_ms=round(timed.total_ms, 1)),
+        query_id=timed.query_id,
     )  # fmt: skip
