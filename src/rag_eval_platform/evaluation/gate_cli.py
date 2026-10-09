@@ -9,6 +9,7 @@ import argparse
 import json
 import logging
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from rag_eval_platform._optional import OptionalDependencyError
@@ -28,6 +29,7 @@ from rag_eval_platform.evaluation.gate_runner import rebuild_and_evaluate
 from rag_eval_platform.evaluation.golden_dataset import GoldenDatasetError, load_golden_dataset
 from rag_eval_platform.ingestion.embedding import EmbeddingError, create_embedder
 from rag_eval_platform.ingestion.loaders import DocumentLoadError
+from rag_eval_platform.observability.logger import create_store, record_eval_run
 from rag_eval_platform.retrieval.reranker import CrossEncoderReranker, Reranker
 from rag_eval_platform.retrieval.vector_store import VectorStoreError, create_vector_store
 
@@ -80,6 +82,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(markdown)
     logger.info("Evaluation gate finished", extra={"passed": result.passed,
                 "report": str(args.report)})  # fmt: skip
+    record_eval_run(create_store(settings), "gate", result.passed, asdict(retrieval.overall),
+                    current.to_dict())  # fmt: skip
     return EXIT_PASSED if result.passed else EXIT_BLOCKED
 
 

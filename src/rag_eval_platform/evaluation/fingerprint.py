@@ -91,6 +91,14 @@ def current_fingerprint(settings: Settings) -> EvalFingerprint:
     )
 
 
+def fingerprint_or_none(settings: Settings) -> dict[str, Any] | None:
+    """The fingerprint as a dict, or None when it cannot be computed (no corpus folder)."""
+    try:
+        return current_fingerprint(settings).to_dict()
+    except OSError:
+        return None
+
+
 def fingerprint_changes(
     saved: Mapping[str, Any], current: EvalFingerprint
 ) -> tuple[FieldChange, ...]:

@@ -12,6 +12,7 @@ from rag_eval_platform.evaluation import gate_cli
 from rag_eval_platform.evaluation.baselines import save_baseline
 from rag_eval_platform.evaluation.fingerprint import current_fingerprint
 from rag_eval_platform.evaluation.gate import GATE_MARKER
+from rag_eval_platform.observability.store import ObserveStore
 from rag_eval_platform.retrieval.vector_store import VectorStoreError
 
 GOLDEN = [
@@ -87,6 +88,7 @@ def test_a_store_failure_returns_2(workspace: Path, monkeypatch: pytest.MonkeyPa
     assert "could not run" in summary
     assert "Chroma is down" in summary
     assert step_summary.read_text(encoding="utf-8") == summary
+    assert ObserveStore(get_settings().observe_db).eval_runs() == []
 
 
 def test_a_malformed_baseline_returns_2(workspace: Path) -> None:
@@ -94,3 +96,14 @@ def test_a_malformed_baseline_returns_2(workspace: Path) -> None:
     (workspace / "baselines" / "retrieval.json").write_text("{nope", encoding="utf-8")
 
     assert run(workspace) == 2
+
+
+def test_each_gate_run_adds_one_evaluation_history_row(workspace: Path) -> None:
+    fresh_generation_baseline(workspace)
+
+    run(workspace)
+
+    [row] = ObserveStore(get_settings().observe_db).eval_runs("gate")
+    assert row.passed is True
+    assert row.metrics["recall"] == 1.0
+    assert row.fingerprint is not None

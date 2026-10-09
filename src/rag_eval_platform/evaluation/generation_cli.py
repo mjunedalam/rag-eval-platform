@@ -13,6 +13,7 @@ import argparse
 import json
 import logging
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from rag_eval_platform._optional import OptionalDependencyError
@@ -34,6 +35,7 @@ from rag_eval_platform.evaluation.judge import Judge, JudgeError, RagasJudge
 from rag_eval_platform.generation.generator import GenerationError
 from rag_eval_platform.ingestion.embedding import EmbeddingError, create_embedder
 from rag_eval_platform.ingestion.loaders import DocumentLoadError
+from rag_eval_platform.observability.logger import create_store, record_eval_run
 from rag_eval_platform.pipeline import create_pipeline
 from rag_eval_platform.retrieval.vector_store import VectorStoreError
 
@@ -112,6 +114,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "report": str(args.report),
         },
     )
+    if args.limit is None:
+        record_eval_run(create_store(settings), "generation", report.passed,
+                        asdict(report.overall), report_data.get("fingerprint"))  # fmt: skip
+    else:
+        logger.info("Partial run (--limit): not added to the evaluation history")
     return EXIT_PASSED if report.passed else EXIT_BELOW_THRESHOLD
 
 
