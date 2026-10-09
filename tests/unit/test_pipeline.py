@@ -10,11 +10,17 @@ from rag_eval_platform import ask as ask_module
 from rag_eval_platform import pipeline as pipeline_module
 from rag_eval_platform.config.logging_config import configure_logging
 from rag_eval_platform.config.settings import Settings, get_settings
-from rag_eval_platform.generation.generator import Completion, GenerationError, Generator
+from rag_eval_platform.generation.generator import (
+    Answer,
+    AnswerStream,
+    Completion,
+    GenerationError,
+    Generator,
+)
 from rag_eval_platform.generation.prompt_templates import Message
 from rag_eval_platform.ingestion.chunking import Chunk
 from rag_eval_platform.pipeline import RagPipeline, create_pipeline
-from rag_eval_platform.retrieval.vector_store import SearchResult
+from rag_eval_platform.retrieval.vector_store import SearchResult, VectorStoreError
 
 RESULTS = [
     SearchResult(
@@ -117,7 +123,7 @@ class TestAskCommand:
     def test_prints_answer_sources_and_model(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(ask_module, "create_pipeline", lambda s: make_pipeline())
+        monkeypatch.setattr(ask_module, "create_pipeline", lambda s, **kw: make_pipeline())
 
         assert ask_module.main(["What", "is", "MRR?"]) == 0
 
@@ -131,7 +137,7 @@ class TestAskCommand:
     def test_warns_about_invalid_citations(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(ask_module, "create_pipeline", lambda s: make_pipeline("X [5]."))
+        monkeypatch.setattr(ask_module, "create_pipeline", lambda s, **kw: make_pipeline("X [5]."))
 
         ask_module.main(["q?"])
 
@@ -140,7 +146,7 @@ class TestAskCommand:
     def test_pipeline_error_returns_1(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        def down(settings: object) -> None:
+        def down(settings: object, **kwargs: object) -> None:
             raise GenerationError("LLM request failed. Is Ollama running?")
 
         monkeypatch.setattr(ask_module, "create_pipeline", down)
@@ -151,7 +157,9 @@ class TestAskCommand:
     def test_streams_answer_before_listing_sources(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        monkeypatch.setattr(ask_module, "create_pipeline", lambda s: make_pipeline("Streamed [1]."))
+        monkeypatch.setattr(
+            ask_module, "create_pipeline", lambda s, **kw: make_pipeline("Streamed [1].")
+        )
 
         assert ask_module.main(["q?"]) == 0
 
@@ -168,7 +176,7 @@ class TestAskCommand:
                 raise GenerationError("connection dropped. Is Ollama running?")
 
         pipeline = RagPipeline(FakeRetriever(), Generator(DroppingLlm("x")))
-        monkeypatch.setattr(ask_module, "create_pipeline", lambda s: pipeline)
+        monkeypatch.setattr(ask_module, "create_pipeline", lambda s, **kw: pipeline)
 
         assert ask_module.main(["q?"]) == 1
         assert "connection dropped" in capsys.readouterr().err
@@ -179,3 +187,129 @@ def test_ask_timed_reports_retrieval_and_total_time() -> None:
 
     assert timed.answer.text == "MRR is the mean reciprocal rank [1]."
     assert 0 <= timed.retrieve_ms <= timed.total_ms
+
+
+class FakeRecorder:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.rows: list[tuple[str, object]] = []
+
+    def record(self, answer: Answer, *, retrieve_ms: float, total_ms: float) -> str | None:
+        if self.fail:
+            raise RuntimeError("store down")
+        self.rows.append(("ok", answer.text))
+        return f"id-{len(self.rows)}"
+
+    def record_error(self, question: str, error: BaseException, *, total_ms: float) -> str | None:
+        self.rows.append(("error", type(error).__name__))
+        return f"id-{len(self.rows)}"
+
+
+class DownRetriever:
+    def retrieve(self, query: str) -> list[SearchResult]:
+        raise VectorStoreError("Chroma is down")
+
+
+def test_ask_timed_records_the_answer_and_returns_its_id() -> None:
+    recorder = FakeRecorder()
+    pipeline = RagPipeline(FakeRetriever(), Generator(FakeLlm("Answer [1].")), recorder)
+
+    timed = pipeline.ask_timed("q?")
+
+    assert timed.query_id == "id-1"
+    assert recorder.rows == [("ok", "Answer [1].")]
+
+
+def test_a_failed_question_is_recorded_then_re_raised() -> None:
+    recorder = FakeRecorder()
+    pipeline = RagPipeline(DownRetriever(), Generator(FakeLlm("x")), recorder)
+
+    with pytest.raises(VectorStoreError):
+        pipeline.ask_timed("q?")
+    with pytest.raises(VectorStoreError):
+        pipeline.ask_stream("q?")
+    assert recorder.rows == [("error", "VectorStoreError"), ("error", "VectorStoreError")]
+
+
+def test_a_stream_is_recorded_once_it_finishes() -> None:
+    recorder = FakeRecorder()
+    pipeline = RagPipeline(FakeRetriever(), Generator(FakeLlm("Streamed [1].")), recorder)
+
+    stream = pipeline.ask_stream("q?")
+    assert stream.query_id is None
+    text = "".join(stream)
+
+    assert text == "Streamed [1]."
+    assert stream.query_id == "id-1"
+    assert stream.answer.text == "Streamed [1]."
+
+
+def test_a_stream_that_fails_is_recorded_as_an_error() -> None:
+    class BrokenLlm(FakeLlm):
+        def stream(self, messages: Sequence[Message]) -> Iterator[Completion]:
+            yield Completion(text="Half", input_tokens=None, output_tokens=None)
+            raise GenerationError("model crashed")
+
+    recorder = FakeRecorder()
+    pipeline = RagPipeline(FakeRetriever(), Generator(BrokenLlm("x")), recorder)
+
+    with pytest.raises(GenerationError):
+        list(pipeline.ask_stream("q?"))
+    assert recorder.rows == [("error", "GenerationError")]
+
+
+def test_a_failing_recorder_never_breaks_an_answer() -> None:
+    pipeline = RagPipeline(
+        FakeRetriever(), Generator(FakeLlm("Fine [1].")), FakeRecorder(fail=True)
+    )
+
+    timed = pipeline.ask_timed("q?")
+    stream = pipeline.ask_stream("q?")
+
+    assert (timed.answer.text, timed.query_id) == ("Fine [1].", None)
+    assert "".join(stream) == "Fine [1]."
+    assert stream.query_id is None
+
+
+def test_create_pipeline_records_only_with_a_source(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pipeline_module, "create_retriever", lambda settings: FakeRetriever())
+    monkeypatch.setattr(pipeline_module, "create_generator",
+                        lambda settings: Generator(FakeLlm("A [1].")))  # fmt: skip
+
+    assert create_pipeline(Settings()).recorder is None
+    recorded = create_pipeline(Settings(), source="cli")
+    assert recorded.recorder is not None
+    assert recorded.ask_timed("q?").query_id is not None
+
+
+def test_a_blank_question_is_recorded_as_an_error_through_ask_stream() -> None:
+    recorder = FakeRecorder()
+    pipeline = RagPipeline(FakeRetriever(), Generator(FakeLlm("x")), recorder)
+
+    with pytest.raises(ValueError, match="blank"):
+        pipeline.ask_stream("   ")
+
+    assert recorder.rows == [("error", "ValueError")]
+
+
+class FailingGenerator:
+    def generate(self, question: str, results: Sequence[SearchResult]) -> Answer:
+        raise ValueError("boom")
+
+    def stream(
+        self,
+        question: str,
+        results: Sequence[SearchResult],
+        on_complete: object = None,
+    ) -> AnswerStream:
+        raise NotImplementedError
+
+
+def test_a_failing_generator_is_recorded_then_re_raised_through_ask_timed() -> None:
+    recorder = FakeRecorder()
+    pipeline = RagPipeline(FakeRetriever(), FailingGenerator(), recorder)
+
+    with pytest.raises(ValueError, match="boom"):
+        pipeline.ask_timed("q?")
+
+    assert recorder.rows == [("error", "ValueError")]
