@@ -102,8 +102,26 @@ class Settings(BaseSettings):
     api_key: SecretStr | None = None  # RAG_API_KEY; empty means auth is off
     api_rate_limit: int = Field(default=30, gt=0)  # requests per minute per client
 
-    # Observability
+    # Observability (Phase 7)
     log_level: str = "INFO"
+    observe_enabled: bool = True
+    observe_db: Path = Path("data/observability/rag.db")
+    # Other observability logs the ⑧ Observe tab shows read-only (never written through this
+    # process): by default, the Docker API's own rag-api.db. One writer per file — see
+    # observability/store.py's docstring for why.
+    observe_readonly_dbs: list[Path] = Field(
+        default_factory=lambda: [Path("data/observability/rag-api.db")]
+    )
+    observe_store_text: bool = True  # false: store a SHA-256 of the question, no answer text
+    price_input_per_1m: float = Field(default=0.0, ge=0.0)  # USD per 1M tokens (0 = local)
+    price_output_per_1m: float = Field(default=0.0, ge=0.0)
+    drift_window: int = Field(default=20, gt=0)  # answers per window: last N vs previous N
+    drift_latency_rise: float = Field(default=0.5, gt=0)  # p95 may rise by 50%
+    drift_error_rise: float = Field(default=0.10, gt=0)  # rates: absolute rise, 0.10 = 10 points
+    drift_refusal_rise: float = Field(default=0.15, gt=0)
+    drift_citation_rise: float = Field(default=0.10, gt=0)
+    drift_downvote_rise: float = Field(default=0.20, gt=0)
+    review_slow_ms: float = Field(default=30000.0, gt=0)
 
     @field_validator("api_key", mode="before")
     @classmethod

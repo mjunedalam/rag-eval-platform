@@ -202,3 +202,69 @@ def test_an_api_key_is_kept_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.api_key is not None
     assert settings.api_key.get_secret_value() == "fake-test-value"
     assert "fake-test-value" not in repr(settings)
+
+
+def test_observability_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("RAG_OBSERVE_DB", raising=False)
+    monkeypatch.delenv("RAG_OBSERVE_READONLY_DBS", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.observe_enabled is True
+    assert settings.observe_db == Path("data/observability/rag.db")
+    assert settings.observe_readonly_dbs == [Path("data/observability/rag-api.db")]
+    assert settings.observe_store_text is True
+    assert (settings.price_input_per_1m, settings.price_output_per_1m) == (0.0, 0.0)
+    assert settings.drift_window == 20
+    assert settings.drift_latency_rise == 0.5
+    assert settings.drift_error_rise == 0.10
+    assert settings.drift_refusal_rise == 0.15
+    assert settings.drift_citation_rise == 0.10
+    assert settings.drift_downvote_rise == 0.20
+    assert settings.review_slow_ms == 30000
+
+
+def test_observability_settings_come_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAG_OBSERVE_ENABLED", "false")
+    monkeypatch.setenv("RAG_PRICE_INPUT_PER_1M", "0.15")
+    monkeypatch.setenv("RAG_DRIFT_WINDOW", "5")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.observe_enabled is False
+    assert settings.price_input_per_1m == 0.15
+    assert settings.drift_window == 5
+
+
+def test_observe_readonly_dbs_parses_a_json_list_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RAG_OBSERVE_READONLY_DBS", '["a/rag-api.db", "b/other.db"]')
+
+    settings = Settings(_env_file=None)
+
+    assert settings.observe_readonly_dbs == [Path("a/rag-api.db"), Path("b/other.db")]
+
+
+def test_observe_readonly_dbs_can_be_emptied(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RAG_OBSERVE_READONLY_DBS", "[]")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.observe_readonly_dbs == []
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("RAG_DRIFT_WINDOW", "0"), ("RAG_PRICE_OUTPUT_PER_1M", "-1"),
+     ("RAG_DRIFT_ERROR_RISE", "0"), ("RAG_REVIEW_SLOW_MS", "0")],
+)  # fmt: skip
+def test_observability_settings_are_validated(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
