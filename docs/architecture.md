@@ -127,18 +127,20 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | httpx | FastAPI `TestClient` for API tests (dev group) | in use |
 | | Docker / Docker Compose | Local infrastructure: Chroma, and the API image under the `api` profile | in use |
 | | chromadb-admin (community image, `ui` profile) | Browse Chroma collections and chunks in a web UI | in use |
-| | Streamlit (`ui` group) | The visual playground: a chat beside eight lazy tabs (Overview, one per phase, ⑥ Gate, ⑦ API), upload PDFs, tune every setting, judge an answer, run the gate, call the API | in use |
+| | Streamlit (`ui` group) | The visual playground: a chat beside nine lazy tabs (Overview, one per phase, ⑥ Gate, ⑦ API, ⑧ Observe), upload PDFs, tune every setting, judge an answer, run the gate, call the API, watch it over time | in use |
 | | Plotly (`ui` group) | Animated playground charts: meaning map (2-D/3-D), similarity, re-ranking, funnel, gauges, reports | in use |
 | | JupyterLab + pandas (`notebook` group) | `notebooks/exploration.ipynb`: inspect chunks, ask questions, run experiments | in use |
 | **7. Observability** | Python `logging` (JSON lines) | One structured line per answered question (chunks, citations, tokens, latency) | in use |
-| | Streamlit | Dashboard: scores over time, recent queries, latency | chosen |
-| | TruLens | Continuous quality tracking with feedback functions | chosen, optional |
+| | SQLite (`sqlite3`, standard library) | Query log, feedback and evaluation history | in use |
+| | Streamlit | Dashboard: scores over time, recent queries, latency (⑧ Observe) | in use |
+| | TruLens (without `trulens-dashboard`: it pins `plotly<7`) | Continuous quality tracking with feedback functions | chosen, Phase 7b |
+| | Langfuse | Tracing and prompt/session-level observability | chosen, Phase 7b |
 | **8. Security and governance** | Microsoft Presidio | Detect and mask PII at ingestion, before embedding | proposed |
 | | Vector store metadata filters (Chroma / Qdrant) | Retrieval-time access control | chosen |
 
 ## Deployment
 
-- `docker/docker-compose.yml` runs the local infrastructure: Chroma on `localhost:8001`, with data in a named volume. `docker/Dockerfile` builds the API image (multi-stage uv, CPU torch, non-root, embedding model baked in, `/health` health check); the `api` service runs it under the `api` profile on `localhost:8000`, reaching Chroma at `chroma:8000` and Ollama on the host at `host.docker.internal:11434`. CI builds the image and checks `/health`.
+- `docker/docker-compose.yml` runs the local infrastructure: Chroma on `localhost:8001`, with data in a named volume. `docker/Dockerfile` builds the API image (multi-stage uv, CPU torch, non-root, embedding model baked in, `/health` health check); the `api` service runs it under the `api` profile on `localhost:8000`, reaching Chroma at `chroma:8000` and Ollama on the host at `host.docker.internal:11434`. The `api` service bind-mounts `../data/observability:/app/data/observability`, but **one writer per SQLite file**: Docker Desktop's file sharing does not carry SQLite's POSIX locks between the host and the container's Linux VM, so the container writes only its own `RAG_OBSERVE_DB=/app/data/observability/rag-api.db`; the host (playground, `ask.py`, the evaluation CLIs) writes `rag.db`, and the ⑧ Observe tab reads `rag-api.db` back read-only (`RAG_OBSERVE_READONLY_DBS`) through `observability.logset.LogSet`. CI builds the image and checks `/health`.
 - The API is stateless; all state lives in the vector store and the observability log.
 
 ## Security and governance

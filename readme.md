@@ -64,7 +64,7 @@ Most RAG demos stop at "it answered". In production the hard questions are diffe
 | 4 · Generation evaluation | RAGAS / DeepEval, local LLM judge (`gemma3:12b`), faithfulness, answer relevance, citation validity | ✅ Done |
 | 5 · CI/CD evaluation gate | Every PR scored on the golden set: live retrieval, committed + fingerprinted generation baseline, before/after PR comment, **⑥ Gate** playground tab | ✅ Done |
 | 6 · API and deployment | FastAPI (`/health`, `/query`, streaming `/query/stream`), API key + rate limit, Docker image with a compose profile, **⑦ API** playground tab | ✅ Done |
-| 7 · Observability | Dashboard of scores, latency and cost over time | 🔜 Next |
+| 7 · Observability | 7a ✅ core (SQLite log, ⑧ Observe, feedback, drift) · 7b 🔜 TruLens + Langfuse | 🟡 In progress |
 | 8 · Security and governance | PII masking, retrieval-time access control, audit logging | Planned |
 
 ```mermaid
@@ -76,11 +76,12 @@ timeline
         2 · Retrieval : Chroma in Docker, re-ranking : retrieval evaluation
         3 · Generation : Ollama qwen3 8b, cited answers : pipeline, ask CLI, playground
         4 · Generation evaluation : RAGAS, DeepEval : gemma3 12b judge, citation validity
-    section 🔜 Next
-        5 · CI gate : block regressions
-    section Planned
+        5 · CI gate : block regressions : baselines, PR comment
         6 · API + deployment : FastAPI, Docker image
-        7 · Observability : scores, latency, cost dashboard
+        7a · Observability core : SQLite log, drift, feedback
+    section 🔜 Next
+        7b · Observability : TruLens + Langfuse
+    section Planned
         8 · Security : PII masking, access control, audit
 ```
 
@@ -247,7 +248,8 @@ Details: [docs/architecture.md](docs/architecture.md) · [docs/evaluation_method
 | **UI & exploration** | Streamlit playground with Plotly charts and Graphviz diagrams, JupyterLab notebook + pandas + matplotlib, chromadb-admin web UI | Streamlit observability dashboard |
 | **Quality** | Pytest (unit + integration), pytest-cov, Ruff (lint + format), mypy (strict) | |
 | **CI/CD** | GitHub Actions: lint, types, unit tests, integration tests against a Chroma service container, gitleaks secret scan, **evaluation gate** (golden set on every PR, PR comment) | |
-| **API & infrastructure** | FastAPI + Uvicorn (`/health`, `/query`, `/query/stream`), Docker Compose (Chroma, optional admin UI, API image under the `api` profile) | |
+| **API & infrastructure** | FastAPI + Uvicorn (`/health`, `/query`, `/query/stream`, `/feedback`), Docker Compose (Chroma, optional admin UI, API image under the `api` profile) | |
+| **Observability** | SQLite query log, feedback and evaluation history (`data/observability/rag.db`), drift detection | |
 | **Security** | Secrets only in git-ignored `.env`, pre-commit and CI secret scanning, prompt-injection guard in the system prompt | Presidio PII masking, access control, audit logs |
 
 ```mermaid
@@ -419,7 +421,7 @@ uv run python scripts/ask.py "What does MRR measure?"
 uv run streamlit run src/rag_eval_platform/playground/app.py    # http://localhost:8501
 ```
 
-A visual learning tool: upload your own PDFs, Markdown or text, ask one question, and watch every RAG phase work on it. A Claude-style chat on the left (detailed, Markdown-formatted answers with headings, lists and tables, citation chips and a Sources line, collapsible steps, sources, copy, regenerate, judge and feedback) sits beside six tabs on the right, and the Overview updates live, side by side, while the answer streams; charts grow in when new data arrives, and a pipeline diagram on every tab highlights the phase you're looking at, with live numbers. It has a warm light theme and a dark theme (**⋮ → Settings → Theme**), and answers come into focus word by word, faint and blurred at first, the way Claude writes.
+A visual learning tool: upload your own PDFs, Markdown or text, ask one question, and watch every RAG phase work on it. A Claude-style chat on the left (detailed, Markdown-formatted answers with headings, lists and tables, citation chips and a Sources line, collapsible steps, sources, copy, regenerate, judge and feedback) sits beside nine tabs on the right, and the Overview updates live, side by side, while the answer streams; charts grow in when new data arrives, and a pipeline diagram on every tab highlights the phase you're looking at, with live numbers. It has a warm light theme and a dark theme (**⋮ → Settings → Theme**), and answers come into focus word by word, faint and blurred at first, the way Claude writes.
 
 | Tab | What you see |
 |---|---|
@@ -431,6 +433,7 @@ A visual learning tool: upload your own PDFs, Markdown or text, ask one question
 | **⑤ Evaluate** | **This session** (time, coverage and grounding for every question), "Judge this answer" (faithfulness, relevance, citation validity gauges and each citation's verdict), plus the golden-set reports |
 | **⑥ Gate** | The CI gate: the PR flow coloured by the result, gauges for every check, and **Run the gate** with your sidebar settings (a separate `gate_preview` collection), showing pass/block, baseline vs now by question type, and the questions that flipped |
 | **⑦ API** | The same pipeline over HTTP: API status, a request-flow diagram with timings, the request as a **curl** command, and **Send** for the real JSON response (status, latency) or a live **Stream** of events |
+| **⑧ Observe** | Every answer, rating and evaluation run over time: a drift banner, summary tiles (latency, errors, refusals, 👍 rate, tokens, cost), latency/volume/tokens charts, evaluation history against baselines and thresholds, a review queue with **Mark reviewed**, and a recent-queries table with a detail view |
 
 ```mermaid
 flowchart LR
@@ -446,7 +449,7 @@ flowchart LR
         RAW["data/raw/<br/>14 docs"] --> C1[("rag_documents")] --> GS["golden-set scores"]
     end
     subgraph play["Playground (private)"]
-        UP["your uploads"] --> DP["data/playground/<br/>git-ignored"] --> C2[("playground")] --> CHAT["six visual tabs"]
+        UP["your uploads"] --> DP["data/playground/<br/>git-ignored"] --> C2[("playground")] --> CHAT["nine visual tabs"]
     end
     C1 x--x C2
 ```
@@ -546,7 +549,8 @@ rag-eval-platform/
 ├── data/
 │   ├── raw/             14-document sample corpus (RAG and LLM evaluation)
 │   ├── golden_dataset/  qa_pairs.json: 30 curated questions
-│   └── processed/       generated chunks (git-ignored)
+│   ├── processed/       generated chunks (git-ignored)
+│   └── observability/   rag.db: query log, feedback, evaluation history (git-ignored)
 ├── tests/               unit/ (fakes) and integration/ (real services)
 ├── notebooks/           exploration.ipynb, generation_evaluation.ipynb
 ├── docker/              docker-compose.yml (Chroma, chromadb-admin)
@@ -566,6 +570,7 @@ rag-eval-platform/
 | [Learning: Phase 3 — Generation](docs/learning/phase-3.md) | LLMs, prompts, citations, refusal, local models — explained simply, with a code walkthrough |
 | [Learning: Phase 4 — Generation evaluation](docs/learning/phase-4.md) | LLM-as-a-judge, faithfulness, answer relevance, citation validity, RAGAS and DeepEval — explained simply, with a code walkthrough |
 | [Learning: Phase 6 — API and deployment](docs/learning/phase-6.md) | What an API is, the request flow, endpoints, streaming events, safety basics, the Docker setup, and the ⑦ API tab |
+| [Learning: Phase 7a — Observability core](docs/learning/phase-7.md) | Where the data comes from, what is stored, drift explained, the review loop, cost, and the ⑧ Observe tab |
 | [Learning: Phase 5 — Evaluation gate](docs/learning/phase-5.md) | Why a gate, what runs where, the rules, the fingerprint, updating baselines, and the ⑥ Gate tab |
 | [Learning: The visual playground](docs/learning/playground.md) | What each playground tab shows, what to try, and how it works underneath |
 | [Enterprise guide](<docs/RAG Pipeline Evaluation - Enterprise Guide.md>) | Background on RAG evaluation in enterprise settings |
