@@ -8,6 +8,7 @@ from typing import Any
 
 import plotly.graph_objects as go
 
+from rag_eval_platform.observability.dashboard import Bucket, EvalPoint
 from rag_eval_platform.playground.gate_view import TypeCompare
 from rag_eval_platform.playground.query_visuals import (
     INVALID_COLOR,
@@ -350,3 +351,96 @@ def session_quality_chart(points: Sequence[SessionPoint], height: int = 220) -> 
     fig.update_yaxes(range=[0, 1.05], tickformat=".0%")
     fig.update_layout(legend={"orientation": "h", "y": 1.15})
     return _layout(fig, height)
+
+
+SOURCE_COLORS = {"api": ACCENT, "playground": NEUTRAL, "cli": "#16a34a"}
+
+
+def observe_latency_chart(rows: Sequence[Bucket], height: int = 220) -> go.Figure:
+    """p50 and p95 answer time per bucket, in seconds."""
+    x = [b.start for b in rows]
+    fig = go.Figure()
+    for name, values, color in (
+        ("p50", [b.p50_ms for b in rows], NEUTRAL),
+        ("p95", [b.p95_ms for b in rows], ACCENT),
+    ):
+        fig.add_scatter(
+            x=x,
+            y=[None if v is None else v / 1000 for v in values],
+            name=name,
+            mode="lines+markers",
+            line={"color": color, "width": 2},
+        )
+    fig.update_yaxes(title_text="seconds")
+    fig.update_layout(legend={"orientation": "h", "y": 1.15})
+    return _layout(fig, height)
+
+
+def observe_volume_chart(rows: Sequence[Bucket], height: int = 220) -> go.Figure:
+    """Queries per bucket, stacked by source."""
+    sources = sorted({s for b in rows for s in b.counts})
+    fig = go.Figure(
+        [
+            go.Bar(
+                x=[b.start for b in rows],
+                y=[b.counts.get(s, 0) for b in rows],
+                name=s,
+                marker_color=SOURCE_COLORS.get(s, MUTED),
+            )
+            for s in sources
+        ]
+    )
+    fig.update_layout(barmode="stack", legend={"orientation": "h", "y": 1.15})
+    fig.update_yaxes(title_text="queries")
+    return _layout(fig, height)
+
+
+def observe_tokens_chart(rows: Sequence[Bucket], height: int = 220) -> go.Figure:
+    """Tokens per bucket; the cost is in the hover text."""
+    fig = go.Figure(
+        go.Bar(
+            x=[b.start for b in rows],
+            y=[b.tokens for b in rows],
+            marker_color=NEUTRAL,
+            name="tokens",
+            hovertext=[f"${b.cost_usd:.4f}" for b in rows],
+        )
+    )
+    fig.update_yaxes(title_text="tokens")
+    return _layout(fig, height)
+
+
+def eval_history_chart(
+    label: str,
+    points: Sequence[EvalPoint],
+    baseline: float | None,
+    threshold: float | None,
+    height: int = 200,
+) -> go.Figure:
+    """One metric over evaluation runs, with the committed baseline and the threshold."""
+    fig = go.Figure(
+        go.Scatter(
+            x=[p.ts for p in points],
+            y=[p.value for p in points],
+            mode="lines+markers",
+            name=label,
+            hovertext=[p.kind for p in points],
+            line={"color": NEUTRAL, "width": 2},
+        )
+    )
+    if baseline is not None:
+        fig.add_hline(
+            y=baseline,
+            line_dash="dot",
+            line_color=MUTED,
+            annotation_text="baseline",
+        )
+    if threshold is not None:
+        fig.add_hline(
+            y=threshold,
+            line_dash="dash",
+            line_color="#dc2626",
+            annotation_text="threshold",
+        )
+    fig.update_yaxes(range=[0, 1.05])
+    return _layout(fig, height, label)

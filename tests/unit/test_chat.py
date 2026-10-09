@@ -11,6 +11,7 @@ from rag_eval_platform.playground.chat import (
     cited_sources_html,
     replace_turn,
     run_steps,
+    runs_in_dashboard,
     source_cards,
     steps_summary,
     streaming_markdown,
@@ -138,3 +139,10 @@ def test_streaming_markdown_fades_the_newest_words_and_chips() -> None:
     assert faded.startswith("MRR ")
     assert faded.count("opacity:0.20") == 2  # "ranks" and the [1] chip
     assert "opacity" not in streaming_markdown("MRR ranks", sources=2)
+
+
+def test_only_the_overview_tab_runs_a_question_in_the_dashboard() -> None:
+    assert runs_in_dashboard(None)  # nothing picked yet: the first tab, Overview
+    assert runs_in_dashboard("Overview")
+    assert not runs_in_dashboard("③ Retrieve")
+    assert not runs_in_dashboard("⑧ Observe")

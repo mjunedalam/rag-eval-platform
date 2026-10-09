@@ -8,15 +8,17 @@ Uploads live in data/playground/ (git-ignored) and their own Chroma collection, 
 sample corpus and the golden-dataset evaluation are never affected. Logic lives in core.py,
 visuals.py, query_visuals.py and live.py; this file and tabs/ only draw.
 
-The chat sits on the left and the dashboard on the right. Asking a question switches the
-dashboard to the Overview, which runs it live: every panel and stat updates as its phase
-finishes while the reply streams into the chat with a status line.
+The chat sits on the left, full height with the input at the bottom, and the dashboard on
+the right. Asking a question never changes the open tab: on the Overview it runs live (every
+panel and stat updates as its phase finishes), on any other tab it runs in the chat alone and
+that tab then shows the new answer. Either way the reply streams into the chat.
 """
 
 from collections.abc import Callable
 
 import streamlit as st
 
+from rag_eval_platform.playground.chat import runs_in_dashboard
 from rag_eval_platform.playground.header import app_css, header_html
 from rag_eval_platform.playground.live import LIVE_CSS
 from rag_eval_platform.playground.session_metrics import (
@@ -26,6 +28,7 @@ from rag_eval_platform.playground.session_metrics import (
 )
 from rag_eval_platform.playground.shared import (
     HISTORY,
+    PENDING_QUESTION,
     TAB_KEY,
     TAB_LABELS,
     TRACE,
@@ -45,6 +48,7 @@ from rag_eval_platform.playground.tabs import (
     gate,
     generate,
     ingest,
+    observe,
     overview,
     retrieve,
 )
@@ -58,6 +62,7 @@ RENDERERS: dict[str, Callable[[TabContext], None]] = {
     "⑤ Evaluate": evaluate.render,
     "⑥ Gate": gate.render,
     "⑦ API": api.render,
+    "⑧ Observe": observe.render,
 }
 
 
@@ -87,6 +92,10 @@ with dashboard_column:
     ctx = TabContext(
         options, store, available_models, snapshot, trace, current_judged(trace), bubble
     )
+    if PENDING_QUESTION in st.session_state and not runs_in_dashboard(
+        st.session_state.get(TAB_KEY)
+    ):
+        overview.run_from_chat(ctx)  # only the chat reply streams; the open tab stays
     tabs = st.tabs(TAB_LABELS, key=TAB_KEY, on_change="rerun")
     for label, tab in zip(TAB_LABELS, tabs, strict=True):
         if tab.open:
