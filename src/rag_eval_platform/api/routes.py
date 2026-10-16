@@ -1,6 +1,5 @@
 """API routes: /health, /query and /query/stream."""
 
-import json
 import logging
 import time
 from collections.abc import Iterator
@@ -9,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from rag_eval_platform.api.errors import public_error_body
 from rag_eval_platform.api.schemas import (
     ErrorResponse,
     FeedbackRequest,
@@ -101,5 +101,5 @@ def _events(pipeline: QueryPipeline, question: str) -> Iterator[str]:
                             stream.query_id)  # fmt: skip
         yield sse_event("done", to_response(timed).model_dump_json())
     except Exception as exc:  # the response has started: report the failure as an event
-        logger.warning("Stream failed", extra={"error": str(exc)})
-        yield sse_event("error", json.dumps(ErrorResponse(error=str(exc)).model_dump()))
+        logger.warning("Stream failed", extra={"error": str(exc)})  # full detail: log only
+        yield sse_event("error", public_error_body(exc).model_dump_json())

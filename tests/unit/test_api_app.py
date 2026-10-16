@@ -125,16 +125,38 @@ def test_rate_limit_answers_429_with_retry_after() -> None:
     assert int(limited.headers["Retry-After"]) >= 1
 
 
-@pytest.mark.parametrize(("error", "status"), [
-    (GenerationError("LLM down. Hint: ollama serve"), 502),
-    (VectorStoreError("Chroma down"), 503),
+@pytest.mark.parametrize(("error", "status", "public"), [
+    (GenerationError("request to http://10.0.0.5:11434/v1 failed"), 502,
+     "The language model is unavailable"),
+    (VectorStoreError("Cannot reach Chroma at chroma-internal:8000"), 503,
+     "The vector store is unavailable"),
 ])  # fmt: skip
-def test_backend_failures_become_clean_json_errors(error: Exception, status: int) -> None:
+def test_backend_failures_become_clean_json_errors(
+    error: Exception, status: int, public: str
+) -> None:
     response = client(FakePipeline(error=error)).post("/query", json={"question": "q"})
 
     assert response.status_code == status
     assert set(response.json()) == {"error", "hint"}
+    assert response.json()["error"] == public
     assert "Traceback" not in response.text
+
+
+@pytest.mark.parametrize("internal", [
+    GenerationError("request to http://10.0.0.5:11434/v1 failed"),
+    VectorStoreError("Cannot reach Chroma at chroma-internal:8000"),
+])  # fmt: skip
+def test_backend_failures_never_reveal_internal_details(
+    internal: Exception, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        response = client(FakePipeline(error=internal)).post("/query", json={"question": "q"})
+
+    assert str(internal) not in response.text
+    assert "10.0.0.5" not in response.text
+    assert "chroma-internal" not in response.text
+    # the full detail is still available to operators, in the server log
+    assert any(str(internal) in str(getattr(r, "error", "")) for r in caplog.records)
 
 
 def test_the_shared_failure_handler_logs_request_failed(
@@ -174,7 +196,10 @@ def test_a_stream_that_fails_midway_ends_with_an_error_event() -> None:
 
     got = events(response.text)
     assert got[-1][0] == "error"
-    assert "model crashed" in json.loads(got[-1][1])["error"]
+    body = json.loads(got[-1][1])
+    assert body["error"] == "The language model is unavailable"
+    assert body["hint"]
+    assert "model crashed" not in response.text  # internal detail stays in the server log
     assert "Traceback" not in response.text
 
 
@@ -230,7 +255,7 @@ def test_feedback_for_an_unknown_query_is_404(store: ObserveStore) -> None:
 
     assert response.status_code == 404
     assert response.json() == {
-        "error": "Unknown query_id: ghost", "hint": "Use the query_id from a /query response"
+        "error": "Unknown query_id", "hint": "Use the query_id from a /query response"
     }  # fmt: skip
 
 
