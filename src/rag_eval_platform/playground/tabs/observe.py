@@ -30,6 +30,7 @@ from rag_eval_platform.observability.store import (
     QueryRecord,
 )
 from rag_eval_platform.playground import charts
+from rag_eval_platform.playground.query_visuals import inert_markdown_images
 from rag_eval_platform.playground.shared import TabContext, settings
 
 BASELINES = Path("baselines")
@@ -169,7 +170,7 @@ def _recent(
             with st.container(border=True):
                 st.text(query.question)
                 if query.answer:
-                    st.markdown(query.answer)
+                    st.markdown(inert_markdown_images(query.answer))  # no remote images
                 elif query.error:
                     st.text(query.error)
                 st.caption(f"Cited: {', '.join(query.cited_doc_ids) or 'none'} · "
