@@ -149,8 +149,9 @@ def spans_html(spans: tuple[AnswerSpan, ...]) -> str:
     )
 
 
-# The "!" that starts Markdown image syntax: "![alt](url)", "![alt][ref]" or "![alt]".
-_IMAGE_START = re.compile(r"(?<!\\)!(?=\[)")
+# The "!" that starts Markdown image syntax ("![alt](url)", "![alt][ref]", "![alt]"),
+# with the run of backslashes in front of it.
+_IMAGE_START = re.compile(r"(\\*)!(?=\[)")
 
 
 def inert_markdown_images(text: str) -> str:
@@ -161,7 +162,16 @@ def inert_markdown_images(text: str) -> str:
     it. With the ``!`` escaped the text still shows, at most as a link nobody follows
     automatically. Raw ``<img>`` HTML is handled separately (escaped or not allowed).
     """
-    return _IMAGE_START.sub(r"\\!", text)
+    return _IMAGE_START.sub(_escape_image_start, text)
+
+
+def _escape_image_start(match: re.Match[str]) -> str:
+    # Markdown reads backslashes in pairs: "\\\\" is one literal backslash. An odd count
+    # means the "!" is already escaped; an even count (zero included) leaves it live, so
+    # one more backslash is added. Checking only the last character would let "\\\\![..]"
+    # (a literal backslash, then a real image) through.
+    backslashes = match.group(1)
+    return backslashes + ("" if len(backslashes) % 2 else "\\") + "!"
 
 
 def spans_markdown(spans: tuple[AnswerSpan, ...], levels: Sequence[tuple[int, float]] = ()) -> str:

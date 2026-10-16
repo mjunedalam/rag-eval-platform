@@ -239,8 +239,10 @@ def test_spans_markdown_keeps_markdown_and_chips_but_disarms_html() -> None:
     assert "&lt;script>x&lt;/script> &amp; > q" in rendered  # inert; ">" kept for quotes
 
 
-# Markdown image syntax that is not escaped: "![" with no backslash before the "!".
-LOADABLE_IMAGE = re.compile(r"(?<!\\)!\[")
+def has_loadable_image(text: str) -> bool:
+    """True if Markdown would render an image: a "![" whose "!" is preceded by an even
+    number of backslashes (each "\\\\" pair is a literal backslash, not an escape)."""
+    return any(len(m.group(1)) % 2 == 0 for m in re.finditer(r"(\\*)!\[", text))
 
 
 @pytest.mark.parametrize("image", [
@@ -248,11 +250,13 @@ LOADABLE_IMAGE = re.compile(r"(?<!\\)!\[")
     '![x](https://attacker.example/a.png "title")',
     "![logo][ref]\n\n[ref]: https://attacker.example/r.png",
     "![shortcut]\n\n[shortcut]: https://attacker.example/s.png",
+    "\\\\![x](https://attacker.example/even.png)",  # "\\" is a literal backslash
+    "\\\\\\\\![x](https://attacker.example/four.png)",
 ])  # fmt: skip
 def test_inert_markdown_images_stops_images_from_loading(image: str) -> None:
     safe = inert_markdown_images(f"Answer [1]. {image}")
 
-    assert LOADABLE_IMAGE.search(safe) is None  # nothing left that a renderer would fetch
+    assert not has_loadable_image(safe)  # nothing left that a renderer would fetch
     assert "\\![" in safe  # escaped: the text still shows, as a plain link at most
 
 
@@ -267,4 +271,14 @@ def test_spans_markdown_never_emits_a_loadable_image() -> None:
         text_spans("See ![p](https://attacker.example/p.png) and [1].", sources=1)
     )
 
-    assert LOADABLE_IMAGE.search(rendered) is None
+    assert not has_loadable_image(rendered)
+
+
+def test_has_loadable_image_counts_backslashes() -> None:
+    assert has_loadable_image("![a](u)")
+    assert not has_loadable_image("\\![a](u)")  # escaped "!"
+    assert has_loadable_image("\\\\![a](u)")  # literal backslash, then a real image
+
+
+def test_inert_markdown_images_keeps_an_already_escaped_image_escaped() -> None:
+    assert inert_markdown_images("\\![a](u)") == "\\![a](u)"
