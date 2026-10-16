@@ -172,3 +172,21 @@ def test_session_quality_chart_has_coverage_and_grounding_lines() -> None:
 
 def test_charts_share_the_app_font() -> None:
     assert "Inter" in charts.session_time_chart(_points()).layout.font.family
+
+
+def test_observe_charts() -> None:
+    from datetime import timedelta
+
+    from tests.unit.observe_records import make_query
+
+    from rag_eval_platform.observability.dashboard import EvalPoint, buckets
+
+    rows = buckets([make_query(1), make_query(2, source="cli")], timedelta(hours=1))
+
+    assert len(charts.observe_latency_chart(rows).data) == 2  # p50, p95
+    assert {t.name for t in charts.observe_volume_chart(rows).data} == {"api", "cli"}
+    assert len(charts.observe_tokens_chart(rows).data) == 1
+    points = [EvalPoint(make_query(1).ts, "retrieval", 0.93)]
+    figure = charts.eval_history_chart("Recall@k", points, baseline=0.9, threshold=0.8)
+    assert len(figure.data) == 1
+    assert len(figure.layout.shapes) == 2  # baseline and threshold lines

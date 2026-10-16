@@ -7,6 +7,7 @@ touched.
 
 import hashlib
 import json
+import logging
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ from pathlib import Path
 from statistics import fmean
 from typing import Any, Protocol
 
-from rag_eval_platform.config.settings import ChunkStrategy
+from rag_eval_platform.config.settings import ChunkStrategy, Settings
 from rag_eval_platform.evaluation.citation_validity import CitationValidity
 from rag_eval_platform.evaluation.judge import Judge, JudgeError, JudgeSample, JudgeScores
 from rag_eval_platform.generation.generator import Answer, Generator
@@ -26,9 +27,17 @@ from rag_eval_platform.ingestion.loaders import (
     DocumentLoadError,
     load_document,
 )
+from rag_eval_platform.observability.logger import (
+    create_query_logger,
+    create_store,
+    record_feedback,
+)
+from rag_eval_platform.observability.store import ObserveStoreError, UnknownQueryError
 from rag_eval_platform.retrieval.reranker import Reranker
 from rag_eval_platform.retrieval.seed import seed
 from rag_eval_platform.retrieval.vector_store import SearchResult, VectorStore
+
+logger = logging.getLogger(__name__)
 
 PLAYGROUND_COLLECTION = "playground"
 UPLOAD_DIR = Path("data/playground")
@@ -297,3 +306,32 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def record_answer(settings: Settings, answer: Answer, *, retrieve_ms: float, total_ms: float,
+                  style: str) -> str | None:  # fmt: skip
+    """Log a playground answer (collection ``playground``); None when logging is off or failed."""
+    recorder = create_query_logger(settings, "playground", collection=PLAYGROUND_COLLECTION,
+                                   style=style)  # fmt: skip
+    return recorder.record(answer, retrieve_ms=retrieve_ms, total_ms=total_ms) if recorder else None
+
+
+def record_failure(settings: Settings, question: str, error: BaseException, *, total_ms: float,
+                   style: str) -> str | None:  # fmt: skip
+    """Log a playground failure; None when logging is off or failed."""
+    recorder = create_query_logger(settings, "playground", collection=PLAYGROUND_COLLECTION,
+                                   style=style)  # fmt: skip
+    return recorder.record_error(question, error, total_ms=total_ms) if recorder else None
+
+
+def save_rating(settings: Settings, query_id: str | None, value: int) -> bool:
+    """Store a 👍 (1) or 👎 (0); False when the answer was never logged or the store fails."""
+    store = create_store(settings)
+    if store is None or query_id is None:
+        return False
+    try:
+        record_feedback(store, query_id, value, None, "playground")
+    except (ObserveStoreError, UnknownQueryError) as exc:
+        logger.warning("Could not save the rating", extra={"error": str(exc)})
+        return False
+    return True

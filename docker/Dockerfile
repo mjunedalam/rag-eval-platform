@@ -20,6 +20,8 @@ FROM python:3.12-slim-bookworm
 RUN useradd --create-home --uid 10001 app
 WORKDIR /app
 COPY --from=builder --chown=app:app /app /app
+# The observability log (Phase 7); compose bind-mounts the host's data/observability here.
+RUN mkdir -p /app/data/observability && chown app:app /app/data/observability
 ENV PATH="/app/.venv/bin:$PATH" HF_HOME=/app/.hf HF_HUB_OFFLINE=1 \
     RAG_API_HOST=0.0.0.0 RAG_API_PORT=8000 PYTHONUNBUFFERED=1
 USER app

@@ -27,4 +27,8 @@ reports/
 
 # Playground uploads: your own documents, never committed
 data/playground/
+
+# Observability log: holds question text, never committed
+data/observability/
+
 .gstack/

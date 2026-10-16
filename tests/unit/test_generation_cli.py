@@ -14,6 +14,7 @@ from rag_eval_platform.evaluation.judge import JudgeError, JudgeSample, JudgeSco
 from rag_eval_platform.generation.generator import Answer, Completion, Generator
 from rag_eval_platform.generation.prompt_templates import Message
 from rag_eval_platform.ingestion.chunking import Chunk
+from rag_eval_platform.observability.store import ObserveStore
 from rag_eval_platform.retrieval.vector_store import SearchResult
 
 GOLDEN = [
@@ -211,3 +212,20 @@ def test_save_baseline_refuses_a_limited_run(fakes: Fakes, tmp_path: Path) -> No
 
     assert exit_info.value.code == 2
     assert not (tmp_path / "baselines").exists()
+
+
+def test_each_run_adds_one_evaluation_history_row(fakes: Fakes, tmp_path: Path) -> None:
+    run(tmp_path)
+
+    [row] = ObserveStore(get_settings().observe_db).eval_runs("generation")
+    assert "faithfulness" in row.metrics
+    assert "context_recall" not in row.metrics  # unscored metrics are dropped
+
+
+def test_a_limited_run_adds_no_evaluation_history_row(
+    fakes: Fakes, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run(tmp_path, "--limit", "1")
+
+    assert ObserveStore(get_settings().observe_db).eval_runs("generation") == []
+    assert "partial run" in capsys.readouterr().err.lower()

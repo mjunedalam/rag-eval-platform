@@ -58,8 +58,16 @@ services:
       RAG_OLLAMA_BASE_URL: http://host.docker.internal:11434/v1
       RAG_API_HOST: 0.0.0.0
       RAG_API_PORT: "8000"
+      # One writer per SQLite file: Docker Desktop's bind mount does not carry SQLite's POSIX
+      # locks between the Mac and this container's Linux VM, so the container never writes the
+      # host's rag.db. It writes its own file in the same mounted folder; the host playground
+      # reads it back read-only (RAG_OBSERVE_READONLY_DBS).
+      RAG_OBSERVE_DB: /app/data/observability/rag-api.db
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      # The observability log: writes its own rag-api.db here, which the host reads read-only.
+      - ../data/observability:/app/data/observability
     depends_on:
       chroma:
         condition: service_healthy

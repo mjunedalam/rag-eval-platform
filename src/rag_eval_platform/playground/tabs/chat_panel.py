@@ -2,7 +2,8 @@
 
 Each reply shows its collapsible steps, the answer with coloured citations, source cards, a
 meta line and actions (copy, regenerate, judge, show in dashboard, feedback). A new question
-gets an empty reply bubble here; the live Overview (right side) writes into it while it runs.
+gets an empty reply bubble here; the run writes into it (with the live Overview beside it
+when that tab is open, otherwise on its own, so the open tab stays selected).
 """
 
 import html
@@ -25,7 +26,7 @@ from rag_eval_platform.playground.chat import (
     user_html,
     with_feedback,
 )
-from rag_eval_platform.playground.core import IndexSnapshot, judge_answer, trace_key
+from rag_eval_platform.playground.core import IndexSnapshot, judge_answer, save_rating, trace_key
 from rag_eval_platform.playground.live import LiveStats, status_html
 from rag_eval_platform.playground.query_visuals import answer_spans, spans_markdown
 from rag_eval_platform.playground.shared import (
@@ -33,7 +34,6 @@ from rag_eval_platform.playground.shared import (
     HISTORY,
     PENDING_QUESTION,
     PENDING_REPLACE,
-    TAB_KEY,
     TRACE,
     current_judged,
     load_judge,
@@ -42,11 +42,18 @@ from rag_eval_platform.playground.shared import (
 )
 from rag_eval_platform.playground.streaming import steps_html
 
-CHAT_HEIGHT = 555  # the scrolling conversation; the input sits below it
+CHAT_HEIGHT = 555  # fallback height of the conversation; CHAT_CSS stretches it to the window
+CHAT_TOP = "8.6rem"  # where the pane starts (below the header); it stays there when scrolling
 
 # Claude's look: the user's message in a warm right-aligned bubble, the reply as plain serif
 # text without an avatar, quiet collapsible rows, small grey icon actions, a rounded input.
 CHAT_CSS = """<style>
+div.stColumn:has(.st-key-chat-pane) {position: sticky; top: CHAT_TOP; align-self: flex-start;}
+div.stVerticalBlock.st-key-chat-pane {flex: 0 0 auto; flex-wrap: nowrap;
+  height: calc(100dvh - CHAT_TOP - 0.75rem) !important;}
+.st-key-chat-pane > div:has(.st-key-chat-box) {flex: 1 1 0 !important; min-height: 0;}
+div.stVerticalBlock.st-key-chat-box {height: 100% !important; max-height: none !important;}
+.st-key-chat-pane > div:has([data-testid="stChatInput"]) {flex: 0 0 auto;}
 .st-key-chat-pane .rag-user {display: flex; justify-content: flex-end; margin: 0.5rem 0 0.1rem;}
 .st-key-chat-pane .rag-user span {background: var(--rag-soft); color: var(--rag-ink);
   line-height: 1.45;
@@ -91,7 +98,7 @@ class Bubble:
 
 def render(snapshot: IndexSnapshot | None, models: list[str] | None) -> Bubble | None:
     """Draw the chat pane; returns the empty reply bubble when a question starts now."""
-    st.html(CHAT_CSS)
+    st.html(CHAT_CSS.replace("CHAT_TOP", CHAT_TOP))
     with st.container(key="chat-pane"):
         return _pane(snapshot, models)
 
@@ -99,14 +106,15 @@ def render(snapshot: IndexSnapshot | None, models: list[str] | None) -> Bubble |
 def _pane(snapshot: IndexSnapshot | None, models: list[str] | None) -> Bubble | None:
     history: tuple[Turn, ...] = st.session_state.get(HISTORY, ())
     header, clear = st.columns([3, 2], vertical_alignment="center")
-    header.markdown("**💬 Chat**")
+    header.markdown("**💬 Chat** <span style='font-size:0.78rem;color:var(--rag-muted)'>"
+                    "· no chat memory</span>", unsafe_allow_html=True)  # fmt: skip
     if clear.button("New chat", key="new-chat", icon=":material/edit_square:", type="tertiary",
                     disabled=not history):  # fmt: skip
         st.session_state[HISTORY] = ()
         st.session_state.pop(TRACE, None)
         st.rerun()
 
-    box = st.container(height=CHAT_HEIGHT, border=True, autoscroll=True)
+    box = st.container(height=CHAT_HEIGHT, border=True, autoscroll=True, key="chat-box")
     ready = snapshot is not None and bool(models)
     picked: str | None = None
     with box:
@@ -123,12 +131,10 @@ def _pane(snapshot: IndexSnapshot | None, models: list[str] | None) -> Bubble | 
         disabled=not ready,
         key="chat-input",
     )
-    st.caption("No chat memory: each question stands alone.")
     question = (typed or picked or "").strip()
     if not question:
         return None
-    st.session_state[PENDING_QUESTION] = question
-    st.session_state[TAB_KEY] = "Overview"  # the dashboard runs it live, side by side
+    st.session_state[PENDING_QUESTION] = question  # the open tab stays; see app.py
     welcome.empty()  # the conversation has started
     with box:
         return _start_reply(question)
@@ -137,7 +143,6 @@ def _pane(snapshot: IndexSnapshot | None, models: list[str] | None) -> Bubble | 
 def start_regenerate(index: int, question: str) -> None:
     st.session_state[PENDING_REPLACE] = index
     st.session_state[PENDING_QUESTION] = question
-    st.session_state[TAB_KEY] = "Overview"
 
 
 def _welcome(snapshot: IndexSnapshot | None, ready: bool) -> str | None:
@@ -261,6 +266,7 @@ def _actions(index: int, turn: Turn, key: str, *, is_active: bool, judged: bool)
         history: tuple[Turn, ...] = st.session_state.get(HISTORY, ())
         if index < len(history):
             st.session_state[HISTORY] = with_feedback(history, index, value)
+            save_rating(settings, turn.query_id, value)
 
 
 def _judge(turn: Turn) -> None:

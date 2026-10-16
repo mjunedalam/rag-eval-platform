@@ -8,6 +8,7 @@ import pytest
 from rag_eval_platform.config.settings import get_settings
 from rag_eval_platform.evaluation import cli
 from rag_eval_platform.ingestion.chunking import Chunk
+from rag_eval_platform.observability.store import ObserveStore
 from rag_eval_platform.retrieval.vector_store import SearchResult, VectorStoreError
 
 GOLDEN = [
@@ -92,6 +93,7 @@ def test_setup_error_returns_2(
 
     assert cli.main(["--golden", str(golden), "--report", str(tmp_path / "r.json")]) == 2
     assert "Cannot reach Chroma" in capsys.readouterr().err
+    assert ObserveStore(get_settings().observe_db).eval_runs() == []
 
 
 def test_invalid_golden_dataset_returns_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -133,3 +135,15 @@ def test_save_baseline_rebuilds_the_index_first_but_a_plain_run_does_not(
 
     cli.main([*base, "--save-baseline"])
     assert len(rebuilt) == 1
+
+
+def test_each_run_adds_one_evaluation_history_row(
+    golden: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    use_retriever(monkeypatch, "forces.md")
+
+    cli.main(["--golden", str(golden), "--report", str(tmp_path / "r.json")])
+
+    [run] = ObserveStore(get_settings().observe_db).eval_runs()
+    assert (run.kind, run.passed) == ("retrieval", True)
+    assert run.metrics["recall"] == 1.0

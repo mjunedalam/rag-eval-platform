@@ -28,7 +28,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        stream = create_pipeline(settings).ask_stream(" ".join(args.question))
+        stream = create_pipeline(settings, source="cli").ask_stream(" ".join(args.question))
         for piece in stream:  # print the answer as the model writes it
             print(piece, end="", flush=True)
         print()

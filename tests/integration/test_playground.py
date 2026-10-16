@@ -6,13 +6,17 @@ Each test skips when its tools are missing (Streamlit, Chroma, Ollama or models)
 
 import json
 import urllib.request
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from tests.pdf_builder import build_pdf
+from tests.unit.observe_records import make_feedback, make_query, make_run
 
-from rag_eval_platform.config.settings import Settings
+from rag_eval_platform.config.settings import Settings, get_settings
 from rag_eval_platform.generation.generator import Generator, OpenAICompatibleClient
+from rag_eval_platform.observability.store import ObserveStore
 from rag_eval_platform.playground.core import build_index, run_query, save_uploads
 
 pytestmark = pytest.mark.integration
@@ -36,7 +40,78 @@ def test_app_renders_without_errors() -> None:
         "⑤ Evaluate",
         "⑥ Gate",
         "⑦ API",
+        "⑧ Observe",
     ]
+
+
+def _reload_observe_script() -> None:
+    """Rebuild ``observe.render`` inside the AppTest script.
+
+    ``playground.shared`` reads ``settings = get_settings()`` once at import time, and
+    ``observe.py`` imports that name, so a stale module (already imported by an earlier test
+    with a different ``RAG_OBSERVE_DB``) would keep pointing at the wrong database. Reloading
+    both, after clearing the settings cache, picks up the env var this test just set.
+    """
+    import importlib
+
+    from rag_eval_platform.config.settings import get_settings
+
+    get_settings.cache_clear()
+    from rag_eval_platform.playground import shared
+
+    importlib.reload(shared)
+    from rag_eval_platform.playground.tabs import observe
+
+    importlib.reload(observe)
+    observe.render(None)  # type: ignore[arg-type] # unused by render; avoids importing TabContext
+
+
+def test_observe_tab_with_no_queries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    testing = pytest.importorskip("streamlit.testing.v1")
+    monkeypatch.setenv("RAG_OBSERVE_DB", str(tmp_path / "rag.db"))
+    get_settings.cache_clear()
+
+    app = testing.AppTest.from_function(_reload_observe_script, default_timeout=60).run()
+
+    assert not app.exception
+    infos = [info.value for info in app.info]
+    assert any("No queries yet — ask one in the chat or the API." in text for text in infos)
+    assert any("Drift checks need" in text for text in infos)
+    metrics = {metric.label: metric.value for metric in app.get("metric")}
+    assert len(metrics) == 8
+    assert metrics["Cost"] == "local · $0"
+
+
+def test_observe_tab_with_seeded_queries(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    testing = pytest.importorskip("streamlit.testing.v1")
+    db_path = tmp_path / "rag.db"
+    monkeypatch.setenv("RAG_OBSERVE_DB", str(db_path))
+    get_settings.cache_clear()
+
+    now = datetime.now(UTC)
+    queries = [
+        make_query(n, ts=now - timedelta(minutes=(44 - n) * 5), total_ms=1000.0 + n * 10.0)
+        for n in range(45)
+    ]  # later queries (higher n, more recent) are a little slower
+    queries[10] = replace(
+        queries[10], status="error", total_ms=None, input_tokens=None, output_tokens=None,
+        retrieve_ms=None, generate_ms=None, cost_usd=0.0,
+    )  # fmt: skip
+    store = ObserveStore(db_path)
+    for query in queries:
+        store.add_query(query)
+    store.add_feedback(make_feedback("q5", 0, comment="Too vague."))
+    store.add_eval_run(make_run("gate", False, {"recall": 0.5, "mrr": 0.4}))
+
+    app = testing.AppTest.from_function(_reload_observe_script, default_timeout=60).run()
+
+    assert not app.exception
+    warnings = [warning.value for warning in app.warning]
+    assert any("The latest gate run failed" in text for text in warnings)
+    buttons = [button.label for button in app.button]
+    assert any(label == "Mark reviewed" for label in buttons)
+    metrics = {metric.label: metric.value for metric in app.get("metric")}
+    assert metrics["Queries"] == f"{len(queries):,}"
 
 
 def test_uploaded_pdf_can_be_indexed_and_answered_with_page_citation(tmp_path: Path) -> None:

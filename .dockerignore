@@ -5,6 +5,7 @@
 !.env.example
 data/playground
 data/processed
+data/observability
 reports
 notebooks
 .superpowers

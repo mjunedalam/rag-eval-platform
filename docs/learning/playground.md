@@ -42,6 +42,10 @@ mindmap
       curl command
       JSON response
       Live events
+    ⑧ Observe
+      Drift banner
+      Summary tiles
+      Review queue
 ```
 
 ---
@@ -61,7 +65,7 @@ You ask once. Everything the pipeline did along the way is kept in one record (t
 
 ### Watching it live
 
-The page is split in two: a **chat** on the left, the **dashboard** on the right. Type in the chat box and press Enter (or click a 💡 suggestion). The dashboard jumps to the **Overview** and runs the question there while the reply streams into the chat, side by side:
+The page is split in two: a **chat** on the left, the **dashboard** on the right. The chat fills the window's height, with the input pinned at the bottom. Type a question and press Enter (or click a 💡 suggestion). The open tab never changes: on the **Overview** the question runs live there while the reply streams into the chat, side by side; on any other tab (③ Retrieve, ④ Generate, ⑧ Observe…) only the chat reply streams, and that tab then shows the new answer:
 
 ```mermaid
 sequenceDiagram
@@ -146,6 +150,7 @@ Amber = the tab you're on, green = phases with data, grey = not done yet (e.g. "
 | **⑤ Evaluate** | An **LLM judge** grades faithfulness, relevance and citation validity | Judge an answer, then ask something your documents don't cover and compare |
 | **⑥ Gate** | The **CI gate**: every change is scored on the golden set before it merges | Run the gate with the defaults (pass), then drag *Chunk size* to 200 and run again (blocked: the generation baseline is stale) |
 | **⑦ API** | The same pipeline over **HTTP**, for other programs | Start the API, press Send, then copy the curl command into a terminal; turn on Stream to watch the events |
+| **⑧ Observe** | Every answer, rating and evaluation run is kept, so quality is something you can watch **over time** | Rate an answer 👎, open ⑧ Observe, find it in the review queue and mark it reviewed |
 | **Overview** | The whole chain at once | Keep it open while you change settings and ask again |
 
 ### ① Ingest: from files to chunks
@@ -202,6 +207,12 @@ Bars turn green at 80%, amber at 50%, red below. The header shows session KPIs (
 ### ⑦ API: the same answer, over HTTP
 
 With the API running (`uv run python scripts/serve_api.py`), **⑦ API** shows the request as a **curl** command you can paste into a terminal, sends it for real, and shows the status code, the time and the JSON. The flow diagram fills in with how long retrieval and generation took. **Stream** switches to `/query/stream` and shows the events as they arrive. See [Phase 6](phase-6.md).
+
+---
+
+### ⑧ Observe: every answer, kept
+
+**⑧ Observe** turns the chat, the API and every evaluation script into one history. A drift banner up top warns when recent traffic looks worse than the traffic just before it (higher latency, more refusals, more 👎); below it, a time-range selector and eight tiles (queries, p50/p95 latency, error rate, refusal rate, 👍 rate, tokens, cost) summarize the window you picked. Charts show latency, volume and tokens over time, and evaluation history plots Recall@k, MRR, NDCG@k, faithfulness and answer relevance against the committed baselines and thresholds. The **review queue** lists every answer that deserves a look — 👎, refused, an invalid citation, an error, or just slow — with **Mark reviewed** once you've read it. A **recent queries** table, filterable by source, opens into the full question, answer and timings. See [Phase 7a](phase-7.md).
 
 ## 3. How it works underneath
 

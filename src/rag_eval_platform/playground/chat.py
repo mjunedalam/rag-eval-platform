@@ -39,6 +39,7 @@ class Turn:
     trace: QueryTrace
     first_token_s: float | None
     feedback: int | None = None  # 1 = thumbs up, 0 = thumbs down
+    query_id: str | None = None  # the observability log's id
 
 
 @dataclass(frozen=True)
@@ -145,3 +146,9 @@ def cited_sources_html(trace: QueryTrace) -> str:
     return (
         '<div class="rag-sources"><span class="label">Sources</span> ' + " ".join(items) + "</div>"
     )
+
+
+def runs_in_dashboard(active_tab: str | None) -> bool:
+    """A question plays live in the Overview only while that tab is open (or none was picked
+    yet); from any other tab it runs in the chat alone, so the selected tab stays."""
+    return active_tab in (None, "Overview")

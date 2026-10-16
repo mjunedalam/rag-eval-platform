@@ -9,6 +9,7 @@ import argparse
 import json
 import logging
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from rag_eval_platform._optional import OptionalDependencyError
@@ -21,11 +22,12 @@ from rag_eval_platform.evaluation.evaluator import (
     evaluate_retrieval,
     report_to_dict,
 )
-from rag_eval_platform.evaluation.fingerprint import current_fingerprint
+from rag_eval_platform.evaluation.fingerprint import current_fingerprint, fingerprint_or_none
 from rag_eval_platform.evaluation.gate_runner import rebuild_index_from_settings
 from rag_eval_platform.evaluation.golden_dataset import GoldenDatasetError, load_golden_dataset
 from rag_eval_platform.ingestion.embedding import EmbeddingError
 from rag_eval_platform.ingestion.loaders import DocumentLoadError
+from rag_eval_platform.observability.logger import create_store, record_eval_run
 from rag_eval_platform.retrieval.retriever import create_retriever
 from rag_eval_platform.retrieval.vector_store import VectorStoreError
 
@@ -83,6 +85,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "report": str(args.report),
         },
     )
+    record_eval_run(create_store(settings), "retrieval", report.passed, asdict(report.overall),
+                    fingerprint_or_none(settings.model_copy(
+                        update={"golden_dataset_path": args.golden})))  # fmt: skip
     return EXIT_PASSED if report.passed else EXIT_BELOW_THRESHOLD
 
 

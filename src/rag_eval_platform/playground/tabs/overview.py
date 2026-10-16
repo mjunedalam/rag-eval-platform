@@ -1,14 +1,17 @@
 """Overview: all five phases on one screen with no scrolling, updating live while a
 question runs.
 
-The layout (pipeline, stats tiles, six panels) is drawn first as empty slots. A newly asked
-question then runs *here*: each slot fills as its phase finishes, the answer streams in with
-a shimmering status line and a cursor, and the tiles tick up. Later reruns redraw the same
-slots from the saved trace without replaying any animation.
+The layout (pipeline, stats tiles, six panels) is drawn first as empty slots. A question
+asked while this tab is open runs *here*: each slot fills as its phase finishes, the answer
+streams in with a shimmering status line and a cursor, and the tiles tick up. Asked from any
+other tab, the same run happens without the dashboard (``run_from_chat``): only the chat
+reply streams, and the open tab stays selected. Later reruns redraw the slots from the saved
+trace without replaying any animation.
 """
 
 import time
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 import streamlit as st
@@ -27,6 +30,8 @@ from rag_eval_platform.playground.core import (
     REPORTS_DIR,
     QueryTrace,
     load_reports,
+    record_answer,
+    record_failure,
     retrieve_step,
     trace_key,
 )
@@ -94,6 +99,25 @@ TITLES = (  # (title, phase accent); the first panel shows chunk sizes until a q
 )
 
 
+@dataclass(frozen=True)
+class Dashboard:
+    """The Overview's live surfaces; a run from another tab has none."""
+
+    pipeline: Any
+    tiles: Any
+    slots: list[Any]
+
+
+class _Nowhere:
+    """A placeholder that draws nothing, for a run with no dashboard."""
+
+    def __getattr__(self, name: str) -> Any:
+        return lambda *args, **kwargs: None
+
+
+NOWHERE: Any = _Nowhere()
+
+
 def render(ctx: TabContext) -> None:
     pipeline = st.empty()
     tiles = st.empty()
@@ -107,7 +131,7 @@ def render(ctx: TabContext) -> None:
 
     question = st.session_state.pop(PENDING_QUESTION, None)
     if question and ctx.store is not None and ctx.snapshot is not None:
-        ctx = _run_live(question, ctx, pipeline, tiles, slots)
+        ctx = _run_live(question, ctx, Dashboard(pipeline, tiles, slots))
     else:
         _draw_static(ctx, pipeline, tiles, slots)
 
@@ -115,10 +139,19 @@ def render(ctx: TabContext) -> None:
 # ---------- the live run ----------
 
 
-def _run_live(
-    question: str, ctx: TabContext, pipeline: Any, tiles: Any, slots: list[Any]
-) -> TabContext:
+def run_from_chat(ctx: TabContext) -> None:
+    """Run the pending question with only the chat reply, leaving the open tab as it is."""
+    question = st.session_state.pop(PENDING_QUESTION, None)
+    if question and ctx.store is not None and ctx.snapshot is not None:
+        _run_live(question, ctx, None)
+
+
+def _run_live(question: str, ctx: TabContext, board: Dashboard | None) -> TabContext:
+    """Retrieve, stream and save one question; ``board`` animates the Overview if given."""
     snapshot, store, options = ctx.snapshot, ctx.store, ctx.options
+    pipeline = board.pipeline if board else NOWHERE
+    tiles = board.tiles if board else NOWHERE
+    slots = board.slots if board else [NOWHERE] * len(TITLES)
     if snapshot is None or store is None:  # checked by the caller; keeps the types narrow
         return ctx
     speed = pace(slow=options.slow_motion)
@@ -135,9 +168,12 @@ def _run_live(
     _show_tiles(tiles, stats)
     slots[0].caption("Measured the moment the answer is done: citation coverage, grounding, "
                      "sources, context and time.")  # fmt: skip
-    with slots[3].container():  # the answer, then the status as its last line (like Claude)
-        text = st.empty()
-        status = st.empty()
+    if board:
+        with slots[3].container():  # the answer, then the status as its last line (like Claude)
+            text = st.empty()
+            status = st.empty()
+    else:
+        text = status = NOWHERE
     slots[4].caption("Waiting for the answer…")
     slots[5].caption("Timing starts when the answer does.")
     done: list[str] = []  # finished steps, shown as ✓ lines in the chat reply
@@ -156,21 +192,17 @@ def _run_live(
             rerank_candidates=options.rerank_candidates,
         )
     except (VectorStoreError, OptionalDependencyError, ValueError) as exc:
+        record_failure(settings, question, exc, style=options.answer_style,
+                       total_ms=(time.perf_counter() - started) * 1000)  # fmt: skip
         _fail(status, bubble, str(exc))
         return ctx
 
     retrieved = {r.chunk.id for r in step.final_results}
     points = meaning_map(snapshot, step.query_embedding, retrieved, max_points=800)
-    animated_chart("live-embed", question, lambda p: charts.meaning_map_chart(
-        points, 2, p, height=CHART_HEIGHT), placeholder=slots[1], frames=speed.frames,
-        frame_seconds=speed.frame_seconds)  # fmt: skip
     partial = QueryTrace(step.vector_results, step.final_results, _empty_answer(question),
                          step.retrieval_ms, step.query_embedding)  # fmt: skip
-    rows = similarity_rows(partial)
-    cutoff = None if was_reranked(partial) else len(step.final_results)
-    animated_chart("live-retrieve", question, lambda p: charts.similarity_chart(
-        rows, cutoff, p, height=CHART_HEIGHT), placeholder=slots[2], frames=speed.frames,
-        frame_seconds=speed.frame_seconds)  # fmt: skip
+    if board:
+        _animate_retrieval(question, points, partial, slots, speed)
     stats = LiveStats(
         chunks=len(snapshot.chunks), candidates=len(step.vector_results),
         top_similarity=step.vector_results[0].score if step.vector_results else None,
@@ -208,14 +240,19 @@ def _run_live(
             bubble, len(step.final_results),
         )  # fmt: skip
     except (GenerationError, OptionalDependencyError, ValueError) as exc:
+        record_failure(settings, question, exc, style=options.answer_style,
+                       total_ms=(time.perf_counter() - started) * 1000)  # fmt: skip
         _fail(status, bubble, str(exc))
         return ctx
 
     answer = stream.answer
+    query_id = record_answer(settings, answer, retrieve_ms=step.retrieval_ms,
+                             total_ms=(time.perf_counter() - started) * 1000,
+                             style=options.answer_style)  # fmt: skip
     trace = QueryTrace(step.vector_results, step.final_results, answer, step.retrieval_ms,
                        step.query_embedding)  # fmt: skip
     # Saved before the next st.* call, so a click now cannot lose the answer.
-    turn = Turn(trace, first_token_s)
+    turn = Turn(trace, first_token_s, query_id=query_id)
     history: tuple[Turn, ...] = st.session_state.get(HISTORY, ())
     replace_at = st.session_state.pop(PENDING_REPLACE, None)
     st.session_state[HISTORY] = (
@@ -238,6 +275,19 @@ def _run_live(
         mark_shown(chart, _data_key(chart, key))
     st.rerun()  # redraw the chat turn (steps, sources, actions) and the settled dashboard
     return ctx  # not reached: st.rerun() stops this run
+
+
+def _animate_retrieval(question: str, points: Any, partial: QueryTrace, slots: list[Any],
+                       speed: Pace) -> None:  # fmt: skip
+    """Grow the meaning map and the similarity ranking into their Overview panels."""
+    animated_chart("live-embed", question, lambda p: charts.meaning_map_chart(
+        points, 2, p, height=CHART_HEIGHT), placeholder=slots[1], frames=speed.frames,
+        frame_seconds=speed.frame_seconds)  # fmt: skip
+    rows = similarity_rows(partial)
+    cutoff = None if was_reranked(partial) else len(partial.final_results)
+    animated_chart("live-retrieve", question, lambda p: charts.similarity_chart(
+        rows, cutoff, p, height=CHART_HEIGHT), placeholder=slots[2], frames=speed.frames,
+        frame_seconds=speed.frame_seconds)  # fmt: skip
 
 
 def _type_out(

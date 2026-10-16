@@ -1,7 +1,7 @@
 """What the API needs at run time, injected so tests can use fakes."""
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from fastapi import HTTPException, Request
@@ -10,12 +10,16 @@ from rag_eval_platform.api.health import HealthCheck
 from rag_eval_platform.api.security import RateLimiter, check_api_key
 from rag_eval_platform.generation.generator import Answer
 from rag_eval_platform.generation.prompt_templates import AnswerStyle
+from rag_eval_platform.observability.drift import DriftThresholds
+from rag_eval_platform.observability.store import ObserveStore
 from rag_eval_platform.pipeline import TimedAnswer
 
 
 class _AnswerStream(Iterable[str], Protocol):
     @property
     def answer(self) -> Answer: ...
+
+    query_id: str | None
 
 
 class QueryPipeline(Protocol):
@@ -30,6 +34,8 @@ class ApiServices:
     checks: Mapping[str, HealthCheck]
     api_key: str | None
     limiter: RateLimiter
+    store: ObserveStore | None = None  # None: observability is off
+    drift: DriftThresholds = field(default_factory=DriftThresholds)
 
 
 def services_of(request: Request) -> ApiServices:
