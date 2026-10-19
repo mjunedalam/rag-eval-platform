@@ -144,6 +144,17 @@ class Settings(BaseSettings):
         default="development", pattern=r"^[a-z0-9_-]+$", max_length=40
     )
 
+    # TruLens RAG-triad scoring (Phase 7b): every answer, on a background worker. The judge is
+    # small so it stays loaded next to the generator; Phase 4 and the gate keep judge_model.
+    trulens_enabled: bool = True
+    trulens_judge_model: str = "gemma3:4b"
+    trulens_queue_size: int = Field(default=100, gt=0)
+
+    @property
+    def ollama_root_url(self) -> str:
+        """Ollama's own address (LiteLLM's ``ollama/`` models), without the ``/v1`` suffix."""
+        return self.ollama_base_url.rstrip("/").removesuffix("/v1")
+
     @property
     def langfuse_ready(self) -> bool:
         """Tracing can actually send: switched on and both keys present."""
@@ -176,6 +187,11 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"the judge model ({self.judge_model}) must differ from the model being "
                 "evaluated (RAG_LLM_MODEL); set RAG_JUDGE_MODEL to another model"
+            )
+        if self.llm_provider == "ollama" and self.trulens_judge_model == self.llm_model:
+            raise ValueError(
+                f"the TruLens judge ({self.trulens_judge_model}) must differ from the generator "
+                "(RAG_LLM_MODEL); set RAG_TRULENS_JUDGE_MODEL to another model"
             )
         return self
 

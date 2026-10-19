@@ -3,7 +3,12 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
-from rag_eval_platform.observability.store import EvalRunRecord, FeedbackRecord, QueryRecord
+from rag_eval_platform.observability.store import (
+    EvalRunRecord,
+    FeedbackRecord,
+    QueryRecord,
+    TriadScoreRecord,
+)
 
 T0 = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)
 
@@ -34,3 +39,10 @@ def make_run(kind: str, passed: bool, metrics: Mapping[str, float],
              minutes: int = 0) -> EvalRunRecord:  # fmt: skip
     return EvalRunRecord(id=f"r-{kind}-{minutes}", ts=T0 + timedelta(minutes=minutes), kind=kind,
                          passed=passed, metrics=dict(metrics), fingerprint="abc123")  # fmt: skip
+
+
+def make_triad(query_id: str, metric: str = "groundedness", value: float = 0.8,
+               minutes: int = 0) -> TriadScoreRecord:  # fmt: skip
+    return TriadScoreRecord(query_id=query_id, metric=metric, value=value,
+                            reason=f"{metric} reason", judge="gemma3:4b",
+                            ts=T0 + timedelta(minutes=minutes))  # fmt: skip

@@ -4,19 +4,31 @@ import html
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from rag_eval_platform.observability.status import ToolStatus
+
 
 @dataclass(frozen=True)
 class Pill:
     label: str
     ok: bool
+    off: bool = False  # switched off on purpose: grey, not red
+    title: str = ""  # shown on hover
+
+
+def tool_pill(status: ToolStatus) -> Pill:
+    return Pill(status.label, ok=status.state == "on", off=status.state == "off",
+                title=status.detail)  # fmt: skip
+
+
+def _pill_html(pill: Pill) -> str:
+    kind = "ok" if pill.ok else "off" if pill.off else "down"
+    title = f' title="{html.escape(pill.title)}"' if pill.title else ""
+    return f'<span class="rag-pill {kind}"{title}>{html.escape(pill.label)}</span>'
 
 
 def header_html(pills: Sequence[Pill], kpis: Sequence[str]) -> str:
-    """Green or red service pills on the left, session numbers on the right."""
-    left = "".join(
-        f'<span class="rag-pill {"ok" if pill.ok else "down"}">{html.escape(pill.label)}</span>'
-        for pill in pills
-    )
+    """Green, grey (off) or red service pills on the left, session numbers on the right."""
+    left = "".join(_pill_html(pill) for pill in pills)
     right = "".join(f'<span class="rag-kpi">{html.escape(kpi)}</span>' for kpi in kpis)
     return f'<div class="rag-header"><div>{left}</div><div>{right}</div></div>'
 
@@ -54,6 +66,7 @@ h1::before {content: "◆ "; color: #d97757;}
 .rag-pill.ok::before {color: #16a34a;}
 .rag-pill.down {border-color: var(--rag-down-border); background: var(--rag-down-bg);}
 .rag-pill.down::before {color: #dc2626;}
+.rag-pill.off::before {color: var(--rag-muted, #94a3b8);}
 .rag-kpi {background: var(--rag-soft); border-color: transparent; font-weight: 600;
   color: var(--rag-ink-2);}
 [data-testid="stVerticalBlockBorderWrapper"] {background: var(--rag-surface);

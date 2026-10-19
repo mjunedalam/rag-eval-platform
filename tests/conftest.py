@@ -25,6 +25,8 @@ def _isolated_observe_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Ite
     # The developer's .env may hold real Langfuse keys: no test may send traces to Langfuse
     # Cloud unless it switches this back on itself (tests/integration/test_langfuse_cloud.py).
     monkeypatch.setenv("RAG_LANGFUSE_ENABLED", "false")
+    # No test may start a background TruLens worker that calls a real judge.
+    monkeypatch.setenv("RAG_TRULENS_ENABLED", "false")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

@@ -8,10 +8,10 @@ WORKDIR /app
 # Dependencies first, so code changes don't reinstall torch.
 COPY pyproject.toml uv.lock readme.md ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-install-project --extra local-embeddings --extra openai
+    uv sync --locked --no-dev --no-install-project --extra local-embeddings --extra openai --extra monitoring
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --extra local-embeddings --extra openai
+    uv sync --locked --no-dev --extra local-embeddings --extra openai --extra monitoring
 # Download the embedding model now, so the container needs no internet.
 RUN .venv/bin/python -c "from sentence_transformers import SentenceTransformer; \
 SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"

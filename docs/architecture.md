@@ -133,7 +133,7 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | **7. Observability** | Python `logging` (JSON lines) | One structured line per answered question (chunks, citations, tokens, latency) | in use |
 | | SQLite (`sqlite3`, standard library) | Query log, feedback and evaluation history | in use |
 | | Streamlit | Dashboard: scores over time, recent queries, latency (⑧ Observe) | in use |
-| | TruLens (without `trulens-dashboard`: it pins `plotly<7`) | Continuous quality tracking with feedback functions | chosen, Phase 7b |
+| | TruLens 2.16 (`trulens-core`, `trulens-feedback`, `trulens-providers-litellm`; no dashboard: it pins `plotly<7`) | RAG triad on every answer in the background (`observability/score_worker.py`), judged by `gemma3:4b` on Ollama through LiteLLM; scores in SQLite `trulens_scores` and on the Langfuse trace | in use |
 | | Langfuse (Cloud; Python SDK v5, `monitoring` extra) | One trace per question: `retrieve-context`, `rerank-chunks`, `generate-answer` via the official `langfuse.openai` integration; 👍/👎 as `user_feedback` scores | in use |
 | **8. Security and governance** | Microsoft Presidio | Detect and mask PII at ingestion, before embedding | proposed |
 | | Vector store metadata filters (Chroma / Qdrant) | Retrieval-time access control | chosen |

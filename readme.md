@@ -64,7 +64,7 @@ Most RAG demos stop at "it answered". In production the hard questions are diffe
 | 4 · Generation evaluation | RAGAS / DeepEval, local LLM judge (`gemma3:12b`), faithfulness, answer relevance, citation validity | ✅ Done |
 | 5 · CI/CD evaluation gate | Every PR scored on the golden set: live retrieval, committed + fingerprinted generation baseline, before/after PR comment, **⑥ Gate** playground tab | ✅ Done |
 | 6 · API and deployment | FastAPI (`/health`, `/query`, streaming `/query/stream`), API key + rate limit, Docker image with a compose profile, **⑦ API** playground tab | ✅ Done |
-| 7 · Observability | 7a ✅ core (SQLite log, ⑧ Observe, feedback, drift) · 7b ✅ Langfuse tracing, 🔜 TruLens scoring | 🟡 In progress |
+| 7 · Observability | 7a ✅ core (SQLite log, ⑧ Observe, feedback, drift) · 7b ✅ Langfuse tracing and TruLens scoring | ✅ Done |
 | 8 · Security and governance | PII masking, retrieval-time access control, audit logging | Planned |
 
 ```mermaid
@@ -249,7 +249,7 @@ Details: [docs/architecture.md](docs/architecture.md) · [docs/evaluation_method
 | **Quality** | Pytest (unit + integration), pytest-cov, Ruff (lint + format), mypy (strict) | |
 | **CI/CD** | GitHub Actions: lint, types, unit tests, integration tests against a Chroma service container, gitleaks secret scan, **evaluation gate** (golden set on every PR, PR comment) | |
 | **API & infrastructure** | FastAPI + Uvicorn (`/health`, `/query`, `/query/stream`, `/feedback`), Docker Compose (Chroma, optional admin UI, API image under the `api` profile) | |
-| **Observability** | SQLite query log, feedback and evaluation history (`data/observability/rag.db`), drift detection, **Langfuse tracing** (one trace per question: retrieval, re-ranking, generation via the official `langfuse.openai` integration, 👍/👎 as scores) | TruLens RAG-triad scoring |
+| **Observability** | SQLite query log, feedback and evaluation history (`data/observability/rag.db`), drift detection, **Langfuse tracing** (one trace per question: retrieval, re-ranking, generation via the official `langfuse.openai` integration, 👍/👎 as scores), **TruLens RAG triad** (context relevance, groundedness, answer relevance on every answer, in the background, judged by a local `gemma3:4b`) | |
 | **Security** | Secrets only in git-ignored `.env`, pre-commit and CI secret scanning, prompt-injection guard in the system prompt | Presidio PII masking, access control, audit logs |
 
 ```mermaid
@@ -466,16 +466,22 @@ In chromadb-admin, connect to `http://chroma:8000` to browse chunks and metadata
 - `notebooks/exploration.ipynb` asks questions, lists retrieval misses, and compares scores with and without re-ranking.
 - `notebooks/generation_evaluation.ipynb` walks through the Phase 4 report in 15 small steps with charts: scores vs pass marks, spread, per question type, faithfulness vs relevance, weakest answers, citations, retrieval vs generation, latency, a live judge demo, and before/after comparison of two runs.
 
-### 6. Trace every question in Langfuse (optional)
+### 6. Trace and score every question: Langfuse and TruLens (optional)
 
 Each question (playground, `ask.py` or the API) becomes one trace in [Langfuse](https://langfuse.com): `answer-question` → `retrieve-context` → `rerank-chunks` → `generate-answer` (model, prompt, tokens, time to first token), with 👍/👎 attached as `user_feedback` scores.
 
+[TruLens](https://www.trulens.org) then scores every answer in the background with the RAG triad: **context relevance** (did retrieval find relevant text?), **groundedness** (is the answer supported by it?) and **answer relevance** (does it answer the question?). A small local judge, `gemma3:4b`, does this about a minute after the answer, so answers keep their speed. The scores appear in ⑧ Observe, with the judge's reasons, and on the question's Langfuse trace.
+
 ```bash
-uv sync --all-extras --all-groups      # includes the `monitoring` extra (langfuse)
+uv sync --all-extras --all-groups      # includes the `monitoring` extra (langfuse, trulens)
+ollama pull gemma3:4b                  # the TruLens judge
 # in .env (git-ignored), from your Langfuse project's Settings -> API Keys:
 #   LANGFUSE_PUBLIC_KEY=...  LANGFUSE_SECRET_KEY=...  LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
 uv run python scripts/ask.py "What does MRR measure?"   # then open Tracing in Langfuse
+uv run python scripts/run_trulens.py --pending          # score answers the background missed (e.g. ask.py)
 ```
+
+TruLens is on by default and needs nothing remote; `RAG_TRULENS_ENABLED=false` turns background scoring off. The header pills show whether each tool is on, off, or needs fixing. See [Phase 7b](docs/learning/phase-7b.md).
 
 Tracing is off until both keys are set, and `RAG_LANGFUSE_ENABLED=false` turns it off. With Langfuse Cloud, questions, answers and retrieved text (including uploaded documents in the playground) are sent to Langfuse; `RAG_OBSERVE_STORE_TEXT=false` sends a placeholder instead of any text and keeps 👍/👎 comments local. Failed steps send only the error type, never its message.
 
@@ -584,6 +590,7 @@ rag-eval-platform/
 | [Learning: Phase 4 — Generation evaluation](docs/learning/phase-4.md) | LLM-as-a-judge, faithfulness, answer relevance, citation validity, RAGAS and DeepEval — explained simply, with a code walkthrough |
 | [Learning: Phase 6 — API and deployment](docs/learning/phase-6.md) | What an API is, the request flow, endpoints, streaming events, safety basics, the Docker setup, and the ⑦ API tab |
 | [Learning: Phase 7a — Observability core](docs/learning/phase-7.md) | Where the data comes from, what is stored, drift explained, the review loop, cost, and the ⑧ Observe tab |
+| [Learning: Phase 7b — Tracing and automatic scoring](docs/learning/phase-7b.md) | Traces vs scores, the shared `query_id`, the RAG triad, why a small background judge, catching up, privacy, a code walkthrough |
 | [Learning: Phase 5 — Evaluation gate](docs/learning/phase-5.md) | Why a gate, what runs where, the rules, the fingerprint, updating baselines, and the ⑥ Gate tab |
 | [Learning: The visual playground](docs/learning/playground.md) | What each playground tab shows, what to try, and how it works underneath |
 | [Enterprise guide](<docs/RAG Pipeline Evaluation - Enterprise Guide.md>) | Background on RAG evaluation in enterprise settings |

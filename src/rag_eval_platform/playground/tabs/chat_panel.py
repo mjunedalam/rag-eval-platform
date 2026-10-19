@@ -15,6 +15,7 @@ import streamlit as st
 from rag_eval_platform._optional import OptionalDependencyError
 from rag_eval_platform.evaluation.judge import JudgeError
 from rag_eval_platform.generation.generator import GenerationError
+from rag_eval_platform.observability.status import langfuse_status
 from rag_eval_platform.playground.answer_metrics import answer_health
 from rag_eval_platform.playground.chat import (
     Turn,
@@ -131,6 +132,9 @@ def _pane(snapshot: IndexSnapshot | None, models: list[str] | None) -> Bubble | 
         disabled=not ready,
         key="chat-input",
     )
+    if langfuse_status(settings).state == "on":
+        st.caption("Langfuse is on: questions, answers and retrieved text, including your "
+                   "uploads, are sent to Langfuse Cloud.")  # fmt: skip
     question = (typed or picked or "").strip()
     if not question:
         return None

@@ -7,10 +7,11 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from tests.unit.observe_records import T0, make_feedback, make_query, make_run
+from tests.unit.observe_records import T0, make_feedback, make_query, make_run, make_triad
 
 from rag_eval_platform.observability.store import (
     SCHEMA_VERSION,
+    TRIAD_METRICS,
     ObserveStore,
     ObserveStoreError,
     UnknownQueryError,
@@ -332,3 +333,65 @@ def test_two_writers_on_one_file_lose_nothing(tmp_path: Path) -> None:
         thread.join()
 
     assert len(ObserveStore(path).queries()) == 50
+
+
+class TestTriadScores:
+    def test_scores_round_trip_for_the_requested_queries(self, store: ObserveStore) -> None:
+        store.add_query(make_query(1))
+        store.add_query(make_query(2))
+        rows = [make_triad("q1", metric) for metric in TRIAD_METRICS]
+
+        store.save_triad_scores(rows)
+        store.save_triad_scores([make_triad("q2")])
+
+        assert sorted(store.triad_scores_for(["q1"]), key=lambda r: r.metric) == sorted(
+            rows, key=lambda r: r.metric
+        )
+        assert store.triad_scores_for([]) == []
+
+    def test_scoring_again_replaces_the_old_value(self, store: ObserveStore) -> None:
+        store.add_query(make_query(1))
+        store.save_triad_scores([make_triad("q1", value=0.2)])
+
+        store.save_triad_scores([make_triad("q1", value=0.9, minutes=5)])
+
+        (row,) = store.triad_scores_for(["q1"])
+        assert row.value == 0.9
+
+    def test_unscored_lists_answered_questions_without_scores_newest_first(
+        self, store: ObserveStore
+    ) -> None:
+        store.add_query(make_query(1))
+        store.add_query(make_query(2, refusal=True))  # nothing to judge
+        store.add_query(make_query(3, status="error", answer=None, error="LLM down"))
+        store.add_query(make_query(4))
+        store.add_query(make_query(5))
+        store.save_triad_scores([make_triad("q4")])
+
+        assert store.unscored_query_ids() == ["q5", "q1"]
+        assert store.unscored_query_ids(limit=1) == ["q5"]
+
+    def test_metric_names_are_the_rag_triad(self) -> None:
+        assert TRIAD_METRICS == ("context_relevance", "groundedness", "answer_relevance")
+
+    def test_a_read_only_store_cannot_save_scores(self, tmp_path: Path) -> None:
+        ObserveStore(tmp_path / "rag.db").add_query(make_query(1))
+
+        with pytest.raises(ObserveStoreError):
+            ObserveStore(tmp_path / "rag.db", read_only=True).save_triad_scores([make_triad("q1")])
+
+
+def test_a_v2_file_upgrades_to_v3_and_keeps_its_rows(tmp_path: Path) -> None:
+    path = tmp_path / "rag.db"
+    ObserveStore(path).add_query(make_query(1))
+    with sqlite3.connect(path) as conn:
+        conn.execute("DROP TABLE trulens_scores")
+        conn.execute("PRAGMA user_version = 2")
+
+    store = ObserveStore(path)
+
+    assert store.get_query("q1") is not None
+    store.save_triad_scores([make_triad("q1")])
+    assert len(store.triad_scores_for(["q1"])) == 1
+    with sqlite3.connect(path) as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 3

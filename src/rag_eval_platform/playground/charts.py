@@ -4,11 +4,12 @@ query_visuals.py. Builders take ``progress`` (0..1) so a chart can grow in, and 
 
 import math
 from collections.abc import Mapping, Sequence
+from datetime import timedelta
 from typing import Any
 
 import plotly.graph_objects as go
 
-from rag_eval_platform.observability.dashboard import Bucket, EvalPoint
+from rag_eval_platform.observability.dashboard import TRIAD_LABELS, Bucket, EvalPoint, TriadBucket
 from rag_eval_platform.playground.gate_view import TypeCompare
 from rag_eval_platform.playground.query_visuals import (
     INVALID_COLOR,
@@ -407,6 +408,32 @@ def observe_tokens_chart(rows: Sequence[Bucket], height: int = 220) -> go.Figure
         )
     )
     fig.update_yaxes(title_text="tokens")
+    return _layout(fig, height)
+
+
+TRIAD_COLORS = {"context_relevance": NEUTRAL, "groundedness": "#16a34a",
+                "answer_relevance": ACCENT}  # fmt: skip
+
+
+def triad_trend_chart(rows: Sequence[TriadBucket], size: timedelta = timedelta(days=1),
+                      height: int = 220) -> go.Figure:  # fmt: skip
+    """TruLens' three scores per time bucket (``size`` wide), 0..1."""
+    fig = go.Figure()
+    for metric, name in TRIAD_LABELS.items():
+        fig.add_scatter(
+            x=[b.start for b in rows],
+            y=[b.means.get(metric) for b in rows],
+            name=name,
+            mode="lines+markers",
+            connectgaps=True,
+            line={"color": TRIAD_COLORS[metric], "width": 2},
+        )
+    fig.update_yaxes(range=[0, 1.05], title_text="score")
+    if rows:  # padded by half a bucket, so a single point doesn't zoom to milliseconds
+        fig.update_xaxes(range=[rows[0].start - size / 2, rows[-1].start + size / 2],
+                         tickformat="%H:%M" if size < timedelta(days=1) else "%b %d",
+                         dtick=size.total_seconds() * 1000)  # one tick per bucket  # fmt: skip
+    fig.update_layout(legend={"orientation": "h", "y": 1.15})
     return _layout(fig, height)
 
 

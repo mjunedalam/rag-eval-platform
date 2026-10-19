@@ -17,6 +17,7 @@ from rag_eval_platform.evaluation.citation_validity import CitationChecker, crea
 from rag_eval_platform.evaluation.judge import RagasJudge
 from rag_eval_platform.generation.prompt_templates import AnswerStyle
 from rag_eval_platform.ingestion.embedding import SentenceTransformerEmbedder
+from rag_eval_platform.observability.status import langfuse_status, trulens_status
 from rag_eval_platform.playground.animation import ease_steps, should_animate
 from rag_eval_platform.playground.charts import CHART_CONFIG
 from rag_eval_platform.playground.core import (
@@ -28,7 +29,7 @@ from rag_eval_platform.playground.core import (
     trace_key,
 )
 from rag_eval_platform.playground.gate_view import GATE_PREVIEW_COLLECTION
-from rag_eval_platform.playground.header import Pill
+from rag_eval_platform.playground.header import Pill, tool_pill
 from rag_eval_platform.playground.visuals import PipelineStats, pipeline_dot
 from rag_eval_platform.retrieval.reranker import CrossEncoderReranker
 from rag_eval_platform.retrieval.vector_store import ChromaVectorStore, VectorStoreError
@@ -216,7 +217,8 @@ def service_status(
         st.error("Ollama is not running: `brew services start ollama`")
     ollama = (Pill(f"Ollama · {len(models)} models", ok=True) if models is not None
               else Pill("Ollama down", ok=False))  # fmt: skip
-    return store, (chroma, ollama)
+    tools = (tool_pill(langfuse_status(settings)), tool_pill(trulens_status(settings, models)))
+    return store, (chroma, ollama, *tools)
 
 
 def show_pipeline(active: str | None, ctx: TabContext) -> None:

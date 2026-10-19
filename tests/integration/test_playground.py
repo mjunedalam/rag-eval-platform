@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from tests.pdf_builder import build_pdf
-from tests.unit.observe_records import make_feedback, make_query, make_run
+from tests.unit.observe_records import make_feedback, make_query, make_run, make_triad
 
 from rag_eval_platform.config.settings import Settings, get_settings
 from rag_eval_platform.generation.generator import Generator, OpenAICompatibleClient
@@ -102,6 +102,9 @@ def test_observe_tab_with_seeded_queries(tmp_path: Path, monkeypatch: pytest.Mon
         store.add_query(query)
     store.add_feedback(make_feedback("q5", 0, comment="Too vague."))
     store.add_eval_run(make_run("gate", False, {"recall": 0.5, "mrr": 0.4}))
+    store.save_triad_scores([make_triad("q40", metric, value) for metric, value in
+                             (("context_relevance", 0.5), ("groundedness", 1.0),
+                              ("answer_relevance", 0.75))])  # fmt: skip
 
     app = testing.AppTest.from_function(_reload_observe_script, default_timeout=60).run()
 
@@ -112,6 +115,9 @@ def test_observe_tab_with_seeded_queries(tmp_path: Path, monkeypatch: pytest.Mon
     assert any(label == "Mark reviewed" for label in buttons)
     metrics = {metric.label: metric.value for metric in app.get("metric")}
     assert metrics["Queries"] == f"{len(queries):,}"
+    assert (metrics["Context"], metrics["Grounded"], metrics["Relevant"]) == (
+        "0.50", "1.00", "0.75"
+    )  # fmt: skip
 
 
 def test_uploaded_pdf_can_be_indexed_and_answered_with_page_citation(tmp_path: Path) -> None:

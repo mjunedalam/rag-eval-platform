@@ -138,6 +138,21 @@ class ChromaVectorStore:
         rows.sort(key=lambda row: (row[0].doc_id, row[0].index))
         return tuple(r[0] for r in rows), tuple(r[1] for r in rows)
 
+    def texts(self, chunk_ids: Sequence[str]) -> tuple[str, ...]:
+        """The text of each chunk id that still exists, in the order asked.
+
+        For scoring a logged answer later (TruLens), which stores only chunk ids.
+        """
+        collection = self._collection() if chunk_ids else None
+        if collection is None:
+            return ()
+        page: Any = collection.get(ids=list(chunk_ids), include=["documents"])
+        try:
+            found = dict(zip(page["ids"], page["documents"], strict=True))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise VectorStoreError(f"Unexpected response from Chroma: {exc}") from exc
+        return tuple(str(found[i]) for i in chunk_ids if i in found)
+
     def _collection(self) -> Collection | None:
         try:
             return self._client.get_collection(self._collection_name)
