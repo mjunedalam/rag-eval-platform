@@ -106,11 +106,13 @@ class FakeSeed:
         self.active = None
 
 
-def tracer(client: FakeClient | None = None) -> tuple[LangfuseTracer, FakeClient, FakePropagate]:
+def tracer(
+    client: FakeClient | None = None, *, store_text: bool = True
+) -> tuple[LangfuseTracer, FakeClient, FakePropagate]:
     client = client or FakeClient()
     propagate = FakePropagate()
     lf = LangfuseTracer(client, public_key="fake-public-value", propagate=propagate,
-                        seed_trace=FakeSeed())  # fmt: skip
+                        seed_trace=FakeSeed(), store_text=store_text)  # fmt: skip
     return lf, client, propagate
 
 
@@ -172,14 +174,15 @@ class TestLangfuseTracer:
         assert child.updates == [{"output": chunk_rows([result(0)]), "metadata": {"returned": 1}}]
         assert child.ended
 
-    def test_a_failed_stage_is_marked_as_an_error(self) -> None:
+    def test_a_failed_stage_sends_only_the_error_type(self) -> None:
         lf, client, _ = tracer()
         stage = lf.start("q1", "q?").stage("rerank-chunks")
 
         stage.end(error=ValueError("bad candidates"))
 
         (child,) = client.roots[0].children
-        assert child.updates == [{"level": "ERROR", "status_message": "ValueError: bad candidates"}]
+        # The message can name internal hosts or quote text; it stays in the local log.
+        assert child.updates == [{"level": "ERROR", "status_message": "ValueError"}]
         assert child.ended
 
     def test_finish_sets_the_trace_output_and_ends_the_root(self) -> None:
@@ -192,14 +195,12 @@ class TestLangfuseTracer:
         assert root.updates == [{"output": "MRR is ... [1].", "metadata": {"refusal": False}}]
         assert root.ended
 
-    def test_finish_with_an_error_marks_the_trace(self) -> None:
+    def test_finish_with_an_error_marks_the_trace_with_only_the_error_type(self) -> None:
         lf, client, _ = tracer()
 
         lf.start("q1", "q?").finish(error=RuntimeError("LLM down"))
 
-        assert client.roots[0].updates == [
-            {"level": "ERROR", "status_message": "RuntimeError: LLM down"}
-        ]
+        assert client.roots[0].updates == [{"level": "ERROR", "status_message": "RuntimeError"}]
 
     def test_llm_ref_points_the_generation_at_this_trace_and_root(self) -> None:
         lf, _, _ = tracer()
@@ -219,6 +220,14 @@ class TestLangfuseTracer:
             "name": "user_feedback", "value": 1, "trace_id": "trace-of-q1",
             "data_type": "BOOLEAN", "comment": "great",
         }]  # fmt: skip
+
+    def test_feedback_comments_stay_local_when_the_privacy_switch_is_off(self) -> None:
+        lf, client, _ = tracer(store_text=False)
+
+        lf.score("q1", "user_feedback", 0, comment="my private note", data_type="BOOLEAN")
+
+        assert client.scores[0]["comment"] is None
+        assert client.scores[0]["value"] == 0
 
     def test_trace_url_and_flush(self) -> None:
         lf, client, _ = tracer()
@@ -324,8 +333,10 @@ class TestCreateTracer:
         module = FakeLangfuseModule()
         monkeypatch.setattr(langfuse_tracer, "import_optional", lambda name, extra: module)
 
-        create_tracer(self.ready(observe_store_text=False))
+        built = create_tracer(self.ready(observe_store_text=False))
 
+        assert isinstance(built, LangfuseTracer)
+        assert built.store_text is False  # so feedback comments stay local too
         mask = module.built[0]["mask"]
         assert mask(data="my private question") == langfuse_tracer.HIDDEN_TEXT
         assert mask(data=None) is None

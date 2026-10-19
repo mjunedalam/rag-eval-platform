@@ -57,7 +57,9 @@ def _warn_once(kind: str, exc: BaseException) -> None:
 
 
 def _error_fields(error: BaseException) -> dict[str, Any]:
-    return {"level": "ERROR", "status_message": f"{type(error).__name__}: {error}"}
+    # Only the type: the message can name internal hosts or quote document text, and the
+    # mask hook never sees status messages. The full error stays in the local log.
+    return {"level": "ERROR", "status_message": type(error).__name__}
 
 
 class _LangfuseStage:
@@ -142,9 +144,11 @@ class LangfuseTracer:
     """Traces questions in Langfuse; ``client`` is a ``langfuse.Langfuse`` instance."""
 
     def __init__(self, client: Any, *, public_key: str, propagate: Propagate,
-                 seed_trace: SeedTrace = next_trace_id) -> None:  # fmt: skip
+                 seed_trace: SeedTrace = next_trace_id,
+                 store_text: bool = True) -> None:  # fmt: skip
         self._client, self._public_key, self._propagate = client, public_key, propagate
         self._seed_trace = seed_trace
+        self.store_text = store_text
 
     @property
     def enabled(self) -> bool:
@@ -175,7 +179,8 @@ class LangfuseTracer:
                 value=value,
                 trace_id=self._client.create_trace_id(seed=query_id),
                 data_type=data_type,
-                comment=comment,
+                # The mask hook never sees score comments, so they are dropped here.
+                comment=comment if self.store_text else None,
             )
         except Exception as exc:
             _warn_once("score", exc)
@@ -236,7 +241,8 @@ def create_tracer(settings: Settings) -> Tracer:
     except Exception as exc:  # a bad key format or URL must not stop the app
         _warn_once("setup", exc)
         return NOOP_TRACER
-    tracer = LangfuseTracer(client, public_key=public_key, propagate=module.propagate_attributes)
+    tracer = LangfuseTracer(client, public_key=public_key, propagate=module.propagate_attributes,
+                            store_text=settings.observe_store_text)  # fmt: skip
     _clients[key] = tracer
     return tracer
 

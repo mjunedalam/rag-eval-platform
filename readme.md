@@ -477,7 +477,7 @@ uv sync --all-extras --all-groups      # includes the `monitoring` extra (langfu
 uv run python scripts/ask.py "What does MRR measure?"   # then open Tracing in Langfuse
 ```
 
-Tracing is off until both keys are set, and `RAG_LANGFUSE_ENABLED=false` turns it off. With Langfuse Cloud, questions, answers and retrieved text (including uploaded documents in the playground) are sent to Langfuse; `RAG_OBSERVE_STORE_TEXT=false` sends a placeholder instead of any text.
+Tracing is off until both keys are set, and `RAG_LANGFUSE_ENABLED=false` turns it off. With Langfuse Cloud, questions, answers and retrieved text (including uploaded documents in the playground) are sent to Langfuse; `RAG_OBSERVE_STORE_TEXT=false` sends a placeholder instead of any text and keeps 👍/👎 comments local. Failed steps send only the error type, never its message.
 
 ### Stop everything
 
