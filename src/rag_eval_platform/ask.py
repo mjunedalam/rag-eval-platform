@@ -14,6 +14,7 @@ from rag_eval_platform.config.logging_config import configure_logging
 from rag_eval_platform.config.settings import get_settings
 from rag_eval_platform.generation.generator import Answer, GenerationError
 from rag_eval_platform.ingestion.embedding import EmbeddingError
+from rag_eval_platform.observability.langfuse_tracer import create_tracer
 from rag_eval_platform.pipeline import create_pipeline
 from rag_eval_platform.retrieval.vector_store import VectorStoreError
 
@@ -41,6 +42,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     ) as exc:
         logger.error("Could not answer: %s", exc)
         return 1
+    finally:
+        # A short-lived script must flush, or buffered traces are lost when it exits.
+        create_tracer(settings).flush()
 
     print(format_details(stream.answer))
     return 0

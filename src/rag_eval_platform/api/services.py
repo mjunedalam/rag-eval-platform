@@ -12,6 +12,7 @@ from rag_eval_platform.generation.generator import Answer
 from rag_eval_platform.generation.prompt_templates import AnswerStyle
 from rag_eval_platform.observability.drift import DriftThresholds
 from rag_eval_platform.observability.store import ObserveStore
+from rag_eval_platform.observability.tracing import NOOP_TRACER, Tracer
 from rag_eval_platform.pipeline import TimedAnswer
 
 
@@ -36,6 +37,7 @@ class ApiServices:
     limiter: RateLimiter
     store: ObserveStore | None = None  # None: observability is off
     drift: DriftThresholds = field(default_factory=DriftThresholds)
+    tracer: Tracer = NOOP_TRACER  # Langfuse when configured; flushed when the server stops
 
 
 def services_of(request: Request) -> ApiServices:

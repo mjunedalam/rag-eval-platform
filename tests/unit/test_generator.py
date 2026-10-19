@@ -25,6 +25,7 @@ from rag_eval_platform.generation.prompt_templates import (
     Message,
 )
 from rag_eval_platform.ingestion.chunking import Chunk
+from rag_eval_platform.observability.tracing import LlmTraceRef
 from rag_eval_platform.retrieval.vector_store import SearchResult
 
 
@@ -434,3 +435,137 @@ def test_create_generator_uses_the_style_and_its_token_limit(
     assert (concise.style, detailed.style) == ("concise", "detailed")
     assert seen[0].llm_max_tokens == settings.llm_max_tokens
     assert seen[1].llm_max_tokens == settings.llm_detailed_max_tokens
+
+
+REF = LlmTraceRef(trace_id="t" * 32, parent_observation_id="p" * 16, public_key="fake-public-value")
+TRACE_KWARGS = {
+    "name": "generate-answer",
+    "trace_id": "t" * 32,
+    "parent_observation_id": "p" * 16,
+    "langfuse_public_key": "fake-public-value",
+}
+
+
+def openai_client(completions: FakeChatCompletions, *, langfuse: bool) -> OpenAICompatibleClient:
+    return OpenAICompatibleClient(
+        FakeOpenAI(completions), model="qwen3:8b", temperature=0, max_tokens=64, langfuse=langfuse
+    )
+
+
+class TestTracedLlmCalls:
+    """The Langfuse OpenAI integration nests the generation through four extra arguments."""
+
+    def test_a_langfuse_wrapped_client_sends_the_trace_arguments(self) -> None:
+        completions = FakeChatCompletions()
+
+        openai_client(completions, langfuse=True).traced(REF).complete([Message("user", "q")])
+
+        assert TRACE_KWARGS.items() <= completions.calls[0].items()
+
+    def test_streaming_sends_the_trace_arguments_too(self) -> None:
+        completions = FakeChatCompletions()
+
+        list(openai_client(completions, langfuse=True).traced(REF).stream([Message("user", "q")]))
+
+        assert TRACE_KWARGS.items() <= completions.calls[0].items()
+
+    def test_untraced_calls_send_no_trace_arguments(self) -> None:
+        completions = FakeChatCompletions()
+
+        openai_client(completions, langfuse=True).complete([Message("user", "q")])
+
+        assert not set(TRACE_KWARGS) & set(completions.calls[0])
+
+    def test_a_plain_openai_client_never_sends_them_even_when_traced(self) -> None:
+        completions = FakeChatCompletions()
+
+        openai_client(completions, langfuse=False).traced(REF).complete([Message("user", "q")])
+
+        assert not set(TRACE_KWARGS) & set(completions.calls[0])
+
+    def test_traced_returns_a_copy(self) -> None:
+        client = openai_client(FakeChatCompletions(), langfuse=True)
+
+        assert client.traced(REF) is not client
+        assert client.traced(REF).model == client.model
+
+
+@dataclass
+class TraceableLlm(FakeLlm):
+    traced_with: list[LlmTraceRef] = field(default_factory=list)
+
+    def traced(self, ref: LlmTraceRef) -> "TraceableLlm":
+        self.traced_with.append(ref)
+        return self
+
+
+class TestGeneratorTracing:
+    def test_generate_uses_a_client_traced_to_the_ref(self) -> None:
+        llm = TraceableLlm("A [1].")
+
+        Generator(llm).generate("q?", RESULTS, trace=REF)
+
+        assert llm.traced_with == [REF]
+
+    def test_stream_uses_a_client_traced_to_the_ref(self) -> None:
+        llm = TraceableLlm("A [1].")
+
+        list(Generator(llm).stream("q?", RESULTS, trace=REF))
+
+        assert llm.traced_with == [REF]
+
+    def test_no_ref_or_an_untraceable_client_works_as_before(self) -> None:
+        assert Generator(FakeLlm("A [1].")).generate("q?", RESULTS, trace=REF).text == "A [1]."
+        llm = TraceableLlm("A [1].")
+        Generator(llm).generate("q?", RESULTS)
+        assert llm.traced_with == []
+
+
+class TestConnectWithLangfuse:
+    @pytest.fixture
+    def modules(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
+        imported: dict[str, list[str]] = {"names": []}
+
+        class Module:
+            @staticmethod
+            def OpenAI(**kwargs: Any) -> FakeOpenAI:
+                return FakeOpenAI(FakeChatCompletions())
+
+        def fake_import(name: str, extra: str) -> type[Module]:
+            imported["names"].append(name)
+            return Module
+
+        monkeypatch.setattr(generator_module, "import_optional", fake_import)
+        return imported
+
+    def test_traced_connection_uses_the_langfuse_integration_when_tracing_is_on(
+        self, modules: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(generator_module, "tracing_available", lambda settings: True)
+
+        client = OpenAICompatibleClient.from_settings(Settings())
+
+        assert modules["names"] == ["langfuse.openai"]
+        assert client.traced(REF) is not client  # a wrapped client can be traced
+
+    def test_falls_back_to_plain_openai_when_tracing_is_off(
+        self, modules: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(generator_module, "tracing_available", lambda settings: False)
+
+        client = OpenAICompatibleClient.from_settings(Settings())
+
+        assert modules["names"] == ["openai"]
+        assert client.traced(REF) is client
+
+    def test_judges_are_never_traced(
+        self, modules: dict[str, list[str]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(generator_module, "tracing_available", lambda settings: True)
+
+        OpenAICompatibleClient.connect(
+            Settings(), provider="ollama", model="gemma3:12b", temperature=0, max_tokens=8,
+            timeout=5,
+        )  # fmt: skip
+
+        assert modules["names"] == ["openai"]

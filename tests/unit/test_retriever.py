@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import pytest
+from tests.unit.fake_tracer import FakeQuestion
 
 from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.ingestion.chunking import Chunk
@@ -133,3 +134,52 @@ class TestCreateRetriever:
         assert retriever.reranker is built["reranker"]
         assert built["reranker_model"] == "my/cross-encoder"
         assert retriever.rerank_candidates == 30
+
+
+def question_trace() -> FakeQuestion:
+    return FakeQuestion("q1", "q?", (), None)
+
+
+class TestRetrieveTraced:
+    def test_vector_search_is_one_retrieve_context_stage(self) -> None:
+        trace = question_trace()
+
+        results = Retriever(FakeEmbedder(), FakeStore(RESULTS), top_k=2).retrieve_traced(
+            "q?", trace
+        )
+
+        (stage,) = trace.stages
+        assert stage.name == "retrieve-context"
+        assert stage.input == "q?"
+        assert stage.metadata == {"top_k": 2, "candidates": 2, "reranked": False}
+        assert [row["chunk_id"] for row in stage.output] == [r.chunk.id for r in results]
+        assert stage.ended
+
+    def test_reranking_is_its_own_stage_after_retrieval(self) -> None:
+        trace = question_trace()
+
+        Retriever(FakeEmbedder(), FakeStore(RESULTS), top_k=2, reranker=ReverseReranker(),
+                  rerank_candidates=4).retrieve_traced("q?", trace)  # fmt: skip
+
+        retrieve, rerank = trace.stages
+        assert [row["chunk_id"] for row in retrieve.output] == ["a#0", "b#0", "c#0", "d#0"]
+        assert rerank.name == "rerank-chunks"
+        assert rerank.metadata == {"candidates": 4, "top_n": 2}
+        assert [row["chunk_id"] for row in rerank.output] == ["d#0", "c#0"]
+        assert retrieve.ended
+        assert rerank.ended
+
+    def test_a_failing_search_ends_its_stage_with_the_error(self) -> None:
+        class BrokenStore(FakeStore):
+            def search(self, query_embedding: Sequence[float], k: int) -> list[SearchResult]:
+                raise RuntimeError("chroma down")
+
+        trace = question_trace()
+
+        with pytest.raises(RuntimeError, match="chroma down"):
+            Retriever(FakeEmbedder(), BrokenStore(RESULTS), top_k=2).retrieve_traced("q?", trace)
+
+        assert isinstance(trace.stages[0].error, RuntimeError)
+
+    def test_retrieve_is_unchanged_without_a_trace(self) -> None:
+        assert Retriever(FakeEmbedder(), FakeStore(RESULTS), top_k=2).retrieve("q?") == RESULTS[:2]

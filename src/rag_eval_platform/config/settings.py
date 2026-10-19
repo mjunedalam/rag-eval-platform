@@ -123,7 +123,40 @@ class Settings(BaseSettings):
     drift_downvote_rise: float = Field(default=0.20, gt=0)
     review_slow_ms: float = Field(default=30000.0, gt=0)
 
-    @field_validator("api_key", mode="before")
+    # Langfuse tracing (Phase 7b). The keys use Langfuse's own unprefixed names and live only
+    # in the git-ignored .env. Nothing is sent until tracing is enabled and both keys are set.
+    langfuse_public_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LANGFUSE_PUBLIC_KEY", "RAG_LANGFUSE_PUBLIC_KEY"),
+    )
+    langfuse_secret_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LANGFUSE_SECRET_KEY", "RAG_LANGFUSE_SECRET_KEY"),
+    )
+    langfuse_base_url: str = Field(
+        default="https://cloud.langfuse.com",
+        validation_alias=AliasChoices("LANGFUSE_BASE_URL", "RAG_LANGFUSE_BASE_URL"),
+    )
+    langfuse_enabled: bool = True
+    # Langfuse's rule for environment names: lowercase letters, digits, "-" and "_", and not
+    # starting with "langfuse" (reserved).
+    langfuse_environment: str = Field(
+        default="development", pattern=r"^[a-z0-9_-]+$", max_length=40
+    )
+
+    @property
+    def langfuse_ready(self) -> bool:
+        """Tracing can actually send: switched on and both keys present."""
+        return bool(self.langfuse_enabled and self.langfuse_public_key and self.langfuse_secret_key)
+
+    @field_validator("langfuse_environment")
+    @classmethod
+    def _environment_not_reserved(cls, value: str) -> str:
+        if value.startswith("langfuse"):
+            raise ValueError("langfuse_environment must not start with 'langfuse' (reserved)")
+        return value
+
+    @field_validator("api_key", "langfuse_public_key", "langfuse_secret_key", mode="before")
     @classmethod
     def _empty_api_key_is_none(cls, value: object) -> object:
         return None if value in ("", None) else value

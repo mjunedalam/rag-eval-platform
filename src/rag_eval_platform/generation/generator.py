@@ -16,7 +16,7 @@ import re
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol, Self
+from typing import Any, Protocol, Self, runtime_checkable
 
 from rag_eval_platform._optional import import_optional
 from rag_eval_platform.config.settings import Settings
@@ -27,6 +27,8 @@ from rag_eval_platform.generation.prompt_templates import (
     build_messages,
     prompt_version,
 )
+from rag_eval_platform.observability.langfuse_tracer import create_tracer
+from rag_eval_platform.observability.tracing import LlmTraceRef
 from rag_eval_platform.retrieval.vector_store import SearchResult
 
 # "[1]", "[1][3]" and "[1, 3]" all count; "[a]" or bare numbers do not.
@@ -111,6 +113,24 @@ def _visible_so_far(raw: str) -> str:
     return text.strip()
 
 
+@runtime_checkable
+class SupportsTracing(Protocol):
+    """An LLM client that can record its calls inside a trace (see observability/)."""
+
+    def traced(self, ref: LlmTraceRef) -> "LlmClient": ...
+
+
+def tracing_available(settings: Settings) -> bool:
+    """Langfuse tracing is on and its client exists, so the integration can find it."""
+    return create_tracer(settings).enabled
+
+
+def _client_for(client: "LlmClient", trace: LlmTraceRef | None) -> "LlmClient":
+    if trace is not None and isinstance(client, SupportsTracing):
+        return client.traced(trace)
+    return client
+
+
 class AnswerStream:
     """Iterate to receive the answer text piece by piece; then read ``.answer``."""
 
@@ -120,8 +140,10 @@ class AnswerStream:
         question: str,
         sources: tuple[SearchResult, ...],
         on_complete: Callable[[Answer], None] | None,
+        client: "LlmClient | None" = None,
     ) -> None:
         self._generator = generator
+        self._client = client or generator.client
         self._question = question
         self._sources = sources
         self._on_complete = on_complete
@@ -142,7 +164,7 @@ class AnswerStream:
         started = time.perf_counter()
         raw, shown, usage = "", "", None
         messages = build_messages(self._question, self._sources, self._generator.style)
-        for piece in self._generator.client.stream(messages):
+        for piece in self._client.stream(messages):
             if piece.input_tokens is not None or piece.output_tokens is not None:
                 usage = piece
             raw += piece.text
@@ -177,15 +199,24 @@ class Generator:
     def client(self) -> LlmClient:
         return self._client
 
-    def generate(self, question: str, results: Sequence[SearchResult]) -> Answer:
-        """Answer ``question`` from ``results`` only, with citations mapped to sources."""
+    def generate(
+        self,
+        question: str,
+        results: Sequence[SearchResult],
+        trace: LlmTraceRef | None = None,
+    ) -> Answer:
+        """Answer ``question`` from ``results`` only, with citations mapped to sources.
+
+        With ``trace``, the LLM call is recorded as a generation inside that trace.
+        """
         if not question.strip():
             raise ValueError("question must not be blank")
         if not results:
             return self.build_answer(question, NO_ANSWER, (), completion=None, latency_ms=0.0)
 
         started = time.perf_counter()
-        completion = self._client.complete(build_messages(question, results, self._style))
+        client = _client_for(self._client, trace)
+        completion = client.complete(build_messages(question, results, self._style))
         latency_ms = (time.perf_counter() - started) * 1000
         return self.build_answer(
             question, strip_thinking(completion.text), tuple(results), completion, latency_ms
@@ -196,11 +227,14 @@ class Generator:
         question: str,
         results: Sequence[SearchResult],
         on_complete: Callable[[Answer], None] | None = None,
+        trace: LlmTraceRef | None = None,
     ) -> AnswerStream:
         """Like ``generate``, but the answer text arrives piece by piece."""
         if not question.strip():
             raise ValueError("question must not be blank")
-        return AnswerStream(self, question, tuple(results), on_complete)
+        return AnswerStream(
+            self, question, tuple(results), on_complete, _client_for(self._client, trace)
+        )
 
     def build_answer(
         self,
@@ -236,6 +270,8 @@ class OpenAICompatibleClient:
         max_tokens: int,
         hint: str = "",
         reasoning_effort: str | None = None,
+        langfuse: bool = False,
+        trace: LlmTraceRef | None = None,
     ) -> None:
         self._client = client
         self._model = model
@@ -243,6 +279,18 @@ class OpenAICompatibleClient:
         self._max_tokens = max_tokens
         self._hint = hint
         self._reasoning_effort = reasoning_effort
+        # ``client`` comes from langfuse.openai: calls accept the integration's arguments.
+        self._langfuse = langfuse
+        self._trace = trace
+
+    def traced(self, ref: LlmTraceRef) -> "OpenAICompatibleClient":
+        """A copy whose calls are recorded inside ``ref``'s trace (only when wrapped)."""
+        if not self._langfuse:
+            return self
+        return OpenAICompatibleClient(
+            self._client, self._model, self._temperature, self._max_tokens, self._hint,
+            self._reasoning_effort, langfuse=True, trace=ref,
+        )  # fmt: skip
 
     @property
     def model(self) -> str:
@@ -267,6 +315,7 @@ class OpenAICompatibleClient:
                 if settings.llm_reasoning_effort == "default"
                 else settings.llm_reasoning_effort
             ),
+            traced=True,
         )
 
     @classmethod
@@ -280,17 +329,26 @@ class OpenAICompatibleClient:
         max_tokens: int,
         timeout: float,
         reasoning_effort: str | None = None,
+        traced: bool = False,
     ) -> Self:
-        """A client for any model on ``provider`` (e.g. the evaluation judge)."""
+        """A client for any model on ``provider`` (e.g. the evaluation judge).
+
+        ``traced`` clients come from the official ``langfuse.openai`` integration when Langfuse
+        tracing is on, so each answer's LLM call becomes a generation in its trace. Judges are
+        never traced: their calls are evaluation work, not answers.
+        """
         options, hint = client_options(settings, provider, model, timeout)
-        openai = import_optional("openai", extra="openai")
+        langfuse = traced and tracing_available(settings)
+        module = import_optional("langfuse.openai" if langfuse else "openai",
+                                 extra="monitoring" if langfuse else "openai")  # fmt: skip
         return cls(
-            openai.OpenAI(**options),
+            module.OpenAI(**options),
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
             hint=hint,
             reasoning_effort=reasoning_effort,
+            langfuse=langfuse,
         )
 
     def complete(self, messages: Sequence[Message]) -> Completion:
@@ -330,6 +388,13 @@ class OpenAICompatibleClient:
         }
         if self._reasoning_effort is not None:
             request["reasoning_effort"] = self._reasoning_effort
+        if self._langfuse and self._trace is not None:
+            request |= {
+                "name": "generate-answer",
+                "trace_id": self._trace.trace_id,
+                "parent_observation_id": self._trace.parent_observation_id,
+                "langfuse_public_key": self._trace.public_key,
+            }
         return request
 
     def _error(self, exc: Exception) -> GenerationError:

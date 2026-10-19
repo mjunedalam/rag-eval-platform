@@ -9,7 +9,7 @@ import hashlib
 import json
 import logging
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import fmean
@@ -27,12 +27,15 @@ from rag_eval_platform.ingestion.loaders import (
     DocumentLoadError,
     load_document,
 )
+from rag_eval_platform.observability.langfuse_tracer import create_tracer
 from rag_eval_platform.observability.logger import (
     create_query_logger,
     create_store,
+    new_id,
     record_feedback,
 )
 from rag_eval_platform.observability.store import ObserveStoreError, UnknownQueryError
+from rag_eval_platform.observability.tracing import NOOP_QUESTION, QuestionTrace, chunk_rows
 from rag_eval_platform.retrieval.reranker import Reranker
 from rag_eval_platform.retrieval.seed import seed
 from rag_eval_platform.retrieval.vector_store import SearchResult, VectorStore
@@ -182,20 +185,39 @@ def retrieve_step(
     top_k: int,
     reranker: Reranker | None = None,
     rerank_candidates: int = 20,
+    trace: QuestionTrace = NOOP_QUESTION,
 ) -> RetrievalStep:
-    """Vector search, then optional re-ranking, keeping both rankings for comparison."""
+    """Vector search, then optional re-ranking, keeping both rankings for comparison.
+
+    Both steps are recorded as stages of ``trace`` (the question's Langfuse trace, if any).
+    """
     if not question.strip():
         raise ValueError("question must not be blank")
 
     started = time.perf_counter()
-    query_embedding = tuple(embedder.embed_query(question))
     candidates = top_k if reranker is None else max(rerank_candidates, top_k)
-    vector_results = tuple(store.search(list(query_embedding), k=candidates))
-    final_results = (
-        vector_results
-        if reranker is None
-        else tuple(reranker.rerank(question, vector_results, top_n=top_k))
-    )
+    stage = trace.stage("retrieve-context", input=question, metadata={
+        "top_k": top_k, "candidates": candidates, "reranked": reranker is not None,
+    })  # fmt: skip
+    try:
+        query_embedding = tuple(embedder.embed_query(question))
+        vector_results = tuple(store.search(list(query_embedding), k=candidates))
+    except Exception as exc:
+        stage.end(error=exc)
+        raise
+    stage.end(output=chunk_rows(vector_results))
+    final_results = vector_results
+    if reranker is not None:
+        rerank = trace.stage(
+            "rerank-chunks", input=question,
+            metadata={"candidates": len(vector_results), "top_n": top_k},
+        )  # fmt: skip
+        try:
+            final_results = tuple(reranker.rerank(question, vector_results, top_n=top_k))
+        except Exception as exc:
+            rerank.end(error=exc)
+            raise
+        rerank.end(output=chunk_rows(final_results))
     return RetrievalStep(
         vector_results, final_results, (time.perf_counter() - started) * 1000, query_embedding
     )
@@ -308,20 +330,33 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def start_question_trace(settings: Settings, question: str, *, style: str,
+                         metadata: Mapping[str, Any]) -> tuple[str, QuestionTrace]:  # fmt: skip
+    """A new question: its id (shared by the log row and the trace) and its trace."""
+    query_id = new_id()
+    trace = create_tracer(settings).start(query_id, question, tags=("playground", style),
+                                          metadata=metadata)  # fmt: skip
+    return query_id, trace
+
+
 def record_answer(settings: Settings, answer: Answer, *, retrieve_ms: float, total_ms: float,
-                  style: str) -> str | None:  # fmt: skip
+                  style: str, query_id: str | None = None) -> str | None:  # fmt: skip
     """Log a playground answer (collection ``playground``); None when logging is off or failed."""
     recorder = create_query_logger(settings, "playground", collection=PLAYGROUND_COLLECTION,
                                    style=style)  # fmt: skip
-    return recorder.record(answer, retrieve_ms=retrieve_ms, total_ms=total_ms) if recorder else None
+    if recorder is None:
+        return None
+    return recorder.record(answer, retrieve_ms=retrieve_ms, total_ms=total_ms, query_id=query_id)
 
 
 def record_failure(settings: Settings, question: str, error: BaseException, *, total_ms: float,
-                   style: str) -> str | None:  # fmt: skip
+                   style: str, query_id: str | None = None) -> str | None:  # fmt: skip
     """Log a playground failure; None when logging is off or failed."""
     recorder = create_query_logger(settings, "playground", collection=PLAYGROUND_COLLECTION,
                                    style=style)  # fmt: skip
-    return recorder.record_error(question, error, total_ms=total_ms) if recorder else None
+    if recorder is None:
+        return None
+    return recorder.record_error(question, error, total_ms=total_ms, query_id=query_id)
 
 
 def save_rating(settings: Settings, query_id: str | None, value: int) -> bool:
@@ -330,7 +365,8 @@ def save_rating(settings: Settings, query_id: str | None, value: int) -> bool:
     if store is None or query_id is None:
         return False
     try:
-        record_feedback(store, query_id, value, None, "playground")
+        record_feedback(store, query_id, value, None, "playground",
+                        tracer=create_tracer(settings))  # fmt: skip
     except (ObserveStoreError, UnknownQueryError) as exc:
         logger.warning("Could not save the rating", extra={"error": str(exc)})
         return False

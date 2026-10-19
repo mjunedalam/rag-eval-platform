@@ -134,7 +134,7 @@ Phases are listed in build order. **Status**: *in use* = already installed or co
 | | SQLite (`sqlite3`, standard library) | Query log, feedback and evaluation history | in use |
 | | Streamlit | Dashboard: scores over time, recent queries, latency (⑧ Observe) | in use |
 | | TruLens (without `trulens-dashboard`: it pins `plotly<7`) | Continuous quality tracking with feedback functions | chosen, Phase 7b |
-| | Langfuse | Tracing and prompt/session-level observability | chosen, Phase 7b |
+| | Langfuse (Cloud; Python SDK v5, `monitoring` extra) | One trace per question: `retrieve-context`, `rerank-chunks`, `generate-answer` via the official `langfuse.openai` integration; 👍/👎 as `user_feedback` scores | in use |
 | **8. Security and governance** | Microsoft Presidio | Detect and mask PII at ingestion, before embedding | proposed |
 | | Vector store metadata filters (Chroma / Qdrant) | Retrieval-time access control | chosen |
 

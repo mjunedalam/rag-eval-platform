@@ -64,7 +64,7 @@ Most RAG demos stop at "it answered". In production the hard questions are diffe
 | 4 · Generation evaluation | RAGAS / DeepEval, local LLM judge (`gemma3:12b`), faithfulness, answer relevance, citation validity | ✅ Done |
 | 5 · CI/CD evaluation gate | Every PR scored on the golden set: live retrieval, committed + fingerprinted generation baseline, before/after PR comment, **⑥ Gate** playground tab | ✅ Done |
 | 6 · API and deployment | FastAPI (`/health`, `/query`, streaming `/query/stream`), API key + rate limit, Docker image with a compose profile, **⑦ API** playground tab | ✅ Done |
-| 7 · Observability | 7a ✅ core (SQLite log, ⑧ Observe, feedback, drift) · 7b 🔜 TruLens + Langfuse | 🟡 In progress |
+| 7 · Observability | 7a ✅ core (SQLite log, ⑧ Observe, feedback, drift) · 7b ✅ Langfuse tracing, 🔜 TruLens scoring | 🟡 In progress |
 | 8 · Security and governance | PII masking, retrieval-time access control, audit logging | Planned |
 
 ```mermaid
@@ -249,7 +249,7 @@ Details: [docs/architecture.md](docs/architecture.md) · [docs/evaluation_method
 | **Quality** | Pytest (unit + integration), pytest-cov, Ruff (lint + format), mypy (strict) | |
 | **CI/CD** | GitHub Actions: lint, types, unit tests, integration tests against a Chroma service container, gitleaks secret scan, **evaluation gate** (golden set on every PR, PR comment) | |
 | **API & infrastructure** | FastAPI + Uvicorn (`/health`, `/query`, `/query/stream`, `/feedback`), Docker Compose (Chroma, optional admin UI, API image under the `api` profile) | |
-| **Observability** | SQLite query log, feedback and evaluation history (`data/observability/rag.db`), drift detection | |
+| **Observability** | SQLite query log, feedback and evaluation history (`data/observability/rag.db`), drift detection, **Langfuse tracing** (one trace per question: retrieval, re-ranking, generation via the official `langfuse.openai` integration, 👍/👎 as scores) | TruLens RAG-triad scoring |
 | **Security** | Secrets only in git-ignored `.env`, pre-commit and CI secret scanning, prompt-injection guard in the system prompt | Presidio PII masking, access control, audit logs |
 
 ```mermaid
@@ -465,6 +465,19 @@ In chromadb-admin, connect to `http://chroma:8000` to browse chunks and metadata
 
 - `notebooks/exploration.ipynb` asks questions, lists retrieval misses, and compares scores with and without re-ranking.
 - `notebooks/generation_evaluation.ipynb` walks through the Phase 4 report in 15 small steps with charts: scores vs pass marks, spread, per question type, faithfulness vs relevance, weakest answers, citations, retrieval vs generation, latency, a live judge demo, and before/after comparison of two runs.
+
+### 6. Trace every question in Langfuse (optional)
+
+Each question (playground, `ask.py` or the API) becomes one trace in [Langfuse](https://langfuse.com): `answer-question` → `retrieve-context` → `rerank-chunks` → `generate-answer` (model, prompt, tokens, time to first token), with 👍/👎 attached as `user_feedback` scores.
+
+```bash
+uv sync --all-extras --all-groups      # includes the `monitoring` extra (langfuse)
+# in .env (git-ignored), from your Langfuse project's Settings -> API Keys:
+#   LANGFUSE_PUBLIC_KEY=...  LANGFUSE_SECRET_KEY=...  LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+uv run python scripts/ask.py "What does MRR measure?"   # then open Tracing in Langfuse
+```
+
+Tracing is off until both keys are set, and `RAG_LANGFUSE_ENABLED=false` turns it off. With Langfuse Cloud, questions, answers and retrieved text (including uploaded documents in the playground) are sent to Langfuse; `RAG_OBSERVE_STORE_TEXT=false` sends a placeholder instead of any text and keeps 👍/👎 comments local. Failed steps send only the error type, never its message.
 
 ### Stop everything
 
