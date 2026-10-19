@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 import pytest
-from tests.unit.observe_records import T0, make_feedback, make_query, make_run
+from tests.unit.observe_records import T0, make_feedback, make_query, make_run, make_triad
 
 from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.observability.logger import create_logset
@@ -174,3 +174,19 @@ def test_create_logset_skips_a_readonly_path_equal_to_the_host_db(tmp_path: Path
 
     assert logset is not None
     assert logset.readonly == ()
+
+
+def test_triad_scores_merge_across_stores(tmp_path: Path) -> None:
+    host = ObserveStore(tmp_path / "rag.db")
+    api_writer = ObserveStore(tmp_path / "rag-api.db")
+    host.add_query(make_query(1))
+    api_writer.add_query(make_query(2))
+    host.save_triad_scores([make_triad("q1")])
+    api_writer.save_triad_scores([make_triad("q2", "answer_relevance")])
+    logset = LogSet(host, (ObserveStore(tmp_path / "rag-api.db", read_only=True),))
+
+    rows = logset.triad_scores_for(["q1", "q2"])
+
+    assert {(r.query_id, r.metric) for r in rows} == {
+        ("q1", "groundedness"), ("q2", "answer_relevance")
+    }  # fmt: skip

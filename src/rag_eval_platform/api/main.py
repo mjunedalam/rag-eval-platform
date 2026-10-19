@@ -23,6 +23,7 @@ from rag_eval_platform.generation.prompt_templates import AnswerStyle
 from rag_eval_platform.observability.drift import DriftThresholds
 from rag_eval_platform.observability.langfuse_tracer import create_tracer
 from rag_eval_platform.observability.logger import create_query_logger, create_store
+from rag_eval_platform.observability.score_worker import stop_score_workers
 from rag_eval_platform.pipeline import RagPipeline, trace_metadata
 from rag_eval_platform.retrieval.retriever import create_retriever
 from rag_eval_platform.retrieval.vector_store import create_vector_store
@@ -44,6 +45,7 @@ def create_app(services: ApiServices) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
+        stop_score_workers()  # finish queued TruLens scores first: they go to Langfuse too
         services.tracer.flush()  # send buffered traces and scores before the server stops
 
     app = FastAPI(

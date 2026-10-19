@@ -29,6 +29,11 @@ SETTINGS_ENV_VARS = (
     "LANGFUSE_BASE_URL",
     "RAG_LANGFUSE_ENABLED",
     "RAG_LANGFUSE_ENVIRONMENT",
+    "RAG_TRULENS_ENABLED",
+    "RAG_TRULENS_JUDGE_MODEL",
+    "RAG_TRULENS_QUEUE_SIZE",
+    "RAG_LLM_MODEL",
+    "RAG_OLLAMA_BASE_URL",
 )
 
 
@@ -317,3 +322,39 @@ class TestLangfuseSettings:
 
         with pytest.raises(ValidationError):
             Settings()
+
+
+class TestTrulensSettings:
+    def test_defaults_score_every_answer_with_a_small_local_judge(self) -> None:
+        settings = Settings()
+
+        assert settings.trulens_enabled is True
+        assert settings.trulens_judge_model == "gemma3:4b"
+        assert settings.trulens_queue_size == 100
+
+    def test_judge_must_differ_from_the_generator(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RAG_TRULENS_JUDGE_MODEL", "qwen3:8b")
+
+        with pytest.raises(ValidationError, match="RAG_TRULENS_JUDGE_MODEL"):
+            Settings()
+
+    def test_queue_size_must_be_positive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RAG_TRULENS_QUEUE_SIZE", "0")
+
+        with pytest.raises(ValidationError):
+            Settings()
+
+    @pytest.mark.parametrize(
+        ("base_url", "root"),
+        [
+            ("http://localhost:11434/v1", "http://localhost:11434"),
+            ("http://host.docker.internal:11434/v1/", "http://host.docker.internal:11434"),
+            ("http://localhost:11434", "http://localhost:11434"),
+        ],
+    )
+    def test_ollama_root_drops_the_openai_compatible_suffix(
+        self, monkeypatch: pytest.MonkeyPatch, base_url: str, root: str
+    ) -> None:
+        monkeypatch.setenv("RAG_OLLAMA_BASE_URL", base_url)
+
+        assert Settings().ollama_root_url == root

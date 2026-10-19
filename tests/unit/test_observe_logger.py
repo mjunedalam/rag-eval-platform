@@ -10,6 +10,8 @@ from tests.unit.test_api_app import answer
 
 from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.generation.generator import GenerationError
+from rag_eval_platform.generation.prompt_templates import NO_ANSWER
+from rag_eval_platform.observability import logger as logger_module
 from rag_eval_platform.observability.cost import Prices
 from rag_eval_platform.observability.logger import (
     QueryLogger,
@@ -154,3 +156,54 @@ def test_unknown_query_feedback_is_not_scored(tmp_path: Path) -> None:
         record_feedback(ObserveStore(tmp_path / "o.db"), "ghost", 1, None, "api", tracer=tracer)
 
     assert tracer.scores == []
+
+
+class TestScoringHandOff:
+    def test_a_recorded_answer_is_handed_to_the_scorer(self, tmp_path: Path) -> None:
+        handed: list[str] = []
+        recorder = logger_for(ObserveStore(tmp_path / "rag.db"), on_recorded=handed.append)
+
+        query_id = recorder.record(answer(), retrieve_ms=1, total_ms=2, query_id="q-1")
+
+        assert handed == [query_id] == ["q-1"]
+
+    def test_refusals_and_errors_are_not_handed_over(self, tmp_path: Path) -> None:
+        handed: list[str] = []
+        recorder = logger_for(ObserveStore(tmp_path / "rag.db"), on_recorded=handed.append)
+
+        recorder.record(answer(NO_ANSWER), retrieve_ms=1, total_ms=2)
+        recorder.record_error("q?", GenerationError("down"), total_ms=1)
+
+        assert handed == []
+
+    def test_a_failing_hand_off_never_breaks_recording(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def broken(query_id: str) -> None:
+            raise RuntimeError("worker gone")
+
+        recorder = logger_for(ObserveStore(tmp_path / "rag.db"), on_recorded=broken)
+
+        assert recorder.record(answer(), retrieve_ms=1, total_ms=2, query_id="q-1") == "q-1"
+        assert "worker gone" in caplog.text
+
+    @pytest.mark.parametrize(("source", "scored"), [("api", True), ("playground", True),
+                                                    ("cli", False)])  # fmt: skip
+    def test_the_factory_scores_long_running_sources_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str, scored: bool
+    ) -> None:
+        """ask.py exits right after answering, so run_trulens.py --pending scores it later."""
+        handed: list[str] = []
+
+        class Worker:
+            def submit(self, query_id: str) -> bool:
+                handed.append(query_id)
+                return True
+
+        monkeypatch.setattr(logger_module, "get_score_worker", lambda settings: Worker())
+        recorder = create_query_logger(Settings(_env_file=None, observe_db=tmp_path / "rag.db"),
+                                       source)  # type: ignore[arg-type]  # fmt: skip
+
+        assert recorder is not None
+        recorder.record(answer(), retrieve_ms=1, total_ms=2, query_id="q-1")
+        assert handed == (["q-1"] if scored else [])

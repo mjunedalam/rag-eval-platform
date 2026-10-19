@@ -190,3 +190,44 @@ def test_observe_charts() -> None:
     figure = charts.eval_history_chart("Recall@k", points, baseline=0.9, threshold=0.8)
     assert len(figure.data) == 1
     assert len(figure.layout.shapes) == 2  # baseline and threshold lines
+
+
+def test_triad_trend_has_one_line_per_metric_on_a_zero_to_one_axis() -> None:
+    from datetime import timedelta
+
+    from tests.unit.observe_records import make_query, make_triad
+
+    from rag_eval_platform.observability.dashboard import triad_buckets
+
+    rows = triad_buckets([make_query(1)], [make_triad("q1", "groundedness", 0.8)],
+                         timedelta(hours=1))  # fmt: skip
+
+    figure = charts.triad_trend_chart(rows)
+
+    assert [t.name for t in figure.data] == ["Context relevance", "Groundedness",
+                                             "Answer relevance"]  # fmt: skip
+    assert list(figure.data[1].y) == [0.8]
+    assert list(figure.layout.yaxis.range) == [0, 1.05]
+
+
+def test_triad_trend_shows_a_sensible_time_range_even_for_one_bucket() -> None:
+    """With one point, Plotly would zoom to milliseconds; pad by half a bucket instead."""
+    from datetime import timedelta
+
+    from tests.unit.observe_records import make_query, make_triad
+
+    from rag_eval_platform.observability.dashboard import triad_buckets
+
+    day = timedelta(days=1)
+    rows = triad_buckets([make_query(1)], [make_triad("q1")], day)
+
+    figure = charts.triad_trend_chart(rows, size=day)
+
+    start, end = (value for value in figure.layout.xaxis.range)
+    assert str(start).startswith(str((rows[0].start - day / 2).date()))
+    assert str(end).startswith(str((rows[0].start + day / 2).date()))
+    assert figure.layout.xaxis.tickformat == "%b %d"
+    assert figure.layout.xaxis.dtick == day.total_seconds() * 1000  # no repeated dates
+    assert charts.triad_trend_chart(rows, size=timedelta(hours=1)).layout.xaxis.tickformat == (
+        "%H:%M"
+    )

@@ -2,6 +2,7 @@
 
 import re
 
+from rag_eval_platform.observability.status import ToolStatus
 from rag_eval_platform.playground.header import (
     APP_CSS,
     PHASE_ACCENTS,
@@ -10,6 +11,7 @@ from rag_eval_platform.playground.header import (
     header_html,
     panel_title_html,
     theme_css,
+    tool_pill,
 )
 from rag_eval_platform.playground.live import LIVE_CSS
 
@@ -32,6 +34,20 @@ def test_header_escapes_text_and_hides_empty_kpis() -> None:
 
     assert "&lt;b&gt;x&lt;/b&gt;" in html
     assert "rag-kpi" not in html
+
+
+def test_tools_switched_off_on_purpose_are_grey_and_explain_on_hover() -> None:
+    html = header_html(
+        (tool_pill(ToolStatus("TruLens off", "off", "RAG_TRULENS_ENABLED=false")),
+         tool_pill(ToolStatus("Langfuse on", "on", "sent to <Langfuse>")),
+         tool_pill(ToolStatus("TruLens · judge missing", "problem", "ollama pull x"))),
+        (),
+    )  # fmt: skip
+
+    assert 'class="rag-pill off" title="RAG_TRULENS_ENABLED=false"' in html
+    assert 'class="rag-pill ok" title="sent to &lt;Langfuse&gt;"' in html
+    assert 'class="rag-pill down" title="ollama pull x"' in html
+    assert ".rag-pill.off" in APP_CSS
 
 
 def test_panel_titles_carry_their_phase_colour() -> None:

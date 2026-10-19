@@ -1,6 +1,6 @@
 # Phase 7b — TruLens and Langfuse: design
 
-**Status:** Langfuse tracing implemented and verified against Langfuse Cloud (2026-10-18); TruLens scoring not yet started.
+**Status:** implemented. Langfuse tracing verified against Langfuse Cloud (2026-10-18, PR #12); TruLens scoring verified end to end with `gemma3:4b` (2026-10-19).
 **Branch:** `feat/phase-7b-trulens-langfuse`
 **Follows:** Phase 7a (observability core: SQLite log, ⑧ Observe, feedback, drift). **Followed by:** Phase 8 (security and governance).
 
@@ -39,6 +39,7 @@ Added after installing the official Langfuse agent skill (github.com/langfuse/sk
 - **Text hiding** for `RAG_OBSERVE_STORE_TEXT=false` uses the SDK's masking hook instead of custom hashing.
 - **Context across threads:** the playground streams on a background thread; that thread runs inside a copy of the caller's context (`contextvars`), so the generation stays nested in the question's trace.
 - **Seeded trace ids without a fake parent (found in the self-audit):** passing `trace_context={"trace_id": ...}` without a parent span makes the SDK invent a random remote parent, so Langfuse reported no logical root. The root now gets the seeded id from a custom OpenTelemetry id generator passed to the client (`id_generator=`), and is created with no `trace_context`; a re-fetched trace shows `answer-question` as its logical root.
+- **TruLens as built (2026-10-19):** TruLens 2.16. The SQLite log keeps only chunk ids, so the worker fetches the chunks' text from the answer's own Chroma collection (`ChromaVectorStore.texts`). Groundedness reasons are a per-claim list (`{"reasons": [{criteria, supporting_evidence, score}]}`), shown one claim per line; found by the real-judge integration test. Answers stored with `RAG_OBSERVE_STORE_TEXT=false` are skipped (no text to judge). The catch-up command also exits 1 when some answers still failed. Langfuse's legacy read APIs are gone for organisations created after 2026-09-16; anything reading back must use `v2/observations` and `v3/scores`.
 - **Required self-audit:** after instrumenting, send a real trace, fetch it back with the Langfuse CLI, check it against the best-practices page, fix gaps and repeat until clean.
 
 ## Facts that shaped the design

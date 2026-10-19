@@ -361,6 +361,19 @@ def test_pending_traces_are_flushed_when_the_server_stops() -> None:
     assert tracer.flushed == 1
 
 
+def test_queued_scores_finish_before_traces_are_flushed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TruLens scores go to Langfuse too, so the worker stops (drains) before the flush."""
+    events: list[str] = []
+    tracer = FakeTracer()
+    monkeypatch.setattr(api_main, "stop_score_workers", lambda: events.append("scores done"))
+    monkeypatch.setattr(tracer, "flush", lambda: events.append("flushed"))
+
+    with client(tracer=tracer):
+        assert events == []
+
+    assert events == ["scores done", "flushed"]
+
+
 def test_app_from_settings_traces_each_answer_style(monkeypatch: pytest.MonkeyPatch) -> None:
     tracer = FakeTracer()
     monkeypatch.setattr(api_main, "create_retriever", lambda settings: object())

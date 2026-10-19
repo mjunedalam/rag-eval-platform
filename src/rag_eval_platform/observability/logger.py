@@ -17,6 +17,7 @@ from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.generation.generator import Answer
 from rag_eval_platform.observability.cost import Prices, cost_usd
 from rag_eval_platform.observability.logset import LogSet
+from rag_eval_platform.observability.score_worker import get_score_worker
 from rag_eval_platform.observability.store import (
     EvalKind,
     EvalRunRecord,
@@ -45,15 +46,17 @@ class QueryLogger:
 
     def __init__(self, store: ObserveStore, *, source: Source, collection: str, style: str,
                  prices: Prices = _DEFAULT_PRICES, store_text: bool = True,
-                 clock: Clock = utc_now) -> None:  # fmt: skip
+                 clock: Clock = utc_now,
+                 on_recorded: Callable[[str], object] | None = None) -> None:  # fmt: skip
         self._store, self._source, self._collection, self._style = store, source, collection, style
         self._prices, self._store_text, self._clock = prices, store_text, clock
+        self._on_recorded = on_recorded  # e.g. the TruLens worker's submit
 
     def record(self, answer: Answer, *, retrieve_ms: float, total_ms: float,
                query_id: str | None = None) -> str | None:  # fmt: skip
         """Store one answer; ``query_id`` is the id chosen when the question arrived (it also
         names the question's trace), or a new one."""
-        return self._save(QueryRecord(
+        query_id = self._save(QueryRecord(
             id=query_id or new_id(), ts=self._clock(), source=self._source,
             collection=self._collection,
             question=self._question(answer.question),
@@ -68,6 +71,12 @@ class QueryLogger:
             cost_usd=cost_usd(answer.input_tokens, answer.output_tokens, self._prices),
             status="ok",
         ))  # fmt: skip
+        if query_id is not None and self._on_recorded is not None and not answer.is_refusal:
+            try:
+                self._on_recorded(query_id)
+            except Exception as exc:  # scoring is an add-on; recording already succeeded
+                logger.warning("Could not queue the answer for scoring: %s", exc)
+        return query_id
 
     def record_error(self, question: str, error: BaseException, *, total_ms: float,
                      query_id: str | None = None) -> str | None:  # fmt: skip
@@ -121,9 +130,13 @@ def create_query_logger(settings: Settings, source: Source, *, collection: str |
     store = create_store(settings)
     if store is None:
         return None
+    # ask.py ("cli") exits right after answering, so its answers are scored later by
+    # scripts/run_trulens.py --pending instead of a background thread that would be cut off.
+    worker = get_score_worker(settings) if source != "cli" else None
     return QueryLogger(store, source=source, collection=collection or settings.collection_name,
                        style=style, prices=Prices.from_settings(settings),
-                       store_text=settings.observe_store_text)  # fmt: skip
+                       store_text=settings.observe_store_text,
+                       on_recorded=worker.submit if worker is not None else None)  # fmt: skip
 
 
 def record_feedback(store: ObserveStore, query_id: str, rating: int, comment: str | None,

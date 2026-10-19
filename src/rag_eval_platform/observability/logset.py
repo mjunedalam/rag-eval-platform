@@ -20,6 +20,7 @@ from rag_eval_platform.observability.store import (
     ObserveStore,
     ObserveStoreError,
     QueryRecord,
+    TriadScoreRecord,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,12 @@ class LogSet:
         for store in self._stores():
             merged.extend(self._safe(store, lambda s: s.feedback_for(query_ids)) or [])
         merged.sort(key=lambda f: (f.ts, f.id))
+        return merged
+
+    def triad_scores_for(self, query_ids: Sequence[str]) -> list[TriadScoreRecord]:
+        merged: list[TriadScoreRecord] = []
+        for store in self._stores():
+            merged.extend(self._safe(store, lambda s: s.triad_scores_for(query_ids)) or [])
         return merged
 
     def eval_runs(self, kind: str | None = None) -> list[EvalRunRecord]:

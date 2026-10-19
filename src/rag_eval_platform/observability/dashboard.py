@@ -14,7 +14,13 @@ from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.observability.cost import Prices
 from rag_eval_platform.observability.drift import percentile
 from rag_eval_platform.observability.review import latest_feedback
-from rag_eval_platform.observability.store import EvalRunRecord, FeedbackRecord, QueryRecord
+from rag_eval_platform.observability.store import (
+    TRIAD_METRICS,
+    EvalRunRecord,
+    FeedbackRecord,
+    QueryRecord,
+    TriadScoreRecord,
+)
 
 RANGES: dict[str, timedelta | None] = {
     "24 h": timedelta(hours=24),
@@ -29,6 +35,13 @@ EVAL_METRICS: dict[str, str] = {
     "faithfulness": "Faithfulness",
     "answer_relevance": "Answer relevance",
 }
+TRIAD_LABELS: dict[str, str] = {
+    "context_relevance": "Context relevance",
+    "groundedness": "Groundedness",
+    "answer_relevance": "Answer relevance",
+}
+# Short column names for the recent-queries table, in TRIAD_METRICS order.
+_TRIAD_COLUMNS = dict(zip(TRIAD_METRICS, ("context", "grounded", "relevant"), strict=True))
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
@@ -112,6 +125,33 @@ def buckets(queries: Sequence[QueryRecord], size: timedelta) -> list[Bucket]:
     ]
 
 
+def _mean(values: Sequence[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def triad_means(scores: Sequence[TriadScoreRecord]) -> dict[str, float | None]:
+    """Each triad metric's average over the scored answers (``None`` when none is scored)."""
+    return {m: _mean([s.value for s in scores if s.metric == m]) for m in TRIAD_METRICS}
+
+
+@dataclass(frozen=True)
+class TriadBucket:
+    start: datetime
+    means: Mapping[str, float | None]
+
+
+def triad_buckets(queries: Sequence[QueryRecord], scores: Sequence[TriadScoreRecord],
+                  size: timedelta) -> list[TriadBucket]:  # fmt: skip
+    """Triad averages per time bucket, by when each scored answer was asked."""
+    asked = {q.id: q.ts for q in queries}
+    groups: dict[datetime, list[TriadScoreRecord]] = {}
+    for score in scores:
+        if score.query_id in asked:
+            start = _EPOCH + ((asked[score.query_id] - _EPOCH) // size) * size
+            groups.setdefault(start, []).append(score)
+    return [TriadBucket(start, triad_means(rows)) for start, rows in sorted(groups.items())]
+
+
 @dataclass(frozen=True)
 class EvalPoint:
     ts: datetime
@@ -155,9 +195,11 @@ def query_rows(
     queries: Sequence[QueryRecord],
     feedback: Sequence[FeedbackRecord],
     source: str | None = None,
+    scores: Sequence[TriadScoreRecord] = (),
 ) -> list[dict[str, object]]:
-    """Rows for the recent-queries table, newest first."""
+    """Rows for the recent-queries table, newest first; triad cells are blank while pending."""
     ratings = latest_feedback(feedback)
+    triad = {(s.query_id, s.metric): round(s.value, 2) for s in scores}
     rows = [q for q in queries if source is None or q.source == source]
     return [
         {
@@ -169,6 +211,7 @@ def query_rows(
             "seconds": None if q.total_ms is None else round(q.total_ms / 1000, 1),
             "tokens": _tokens(q),
             "rating": ({1: "👍", 0: "👎"}.get(ratings[q.id].rating, "") if q.id in ratings else ""),
+            **{column: triad.get((q.id, metric)) for metric, column in _TRIAD_COLUMNS.items()},
         }
         for q in sorted(rows, key=lambda q: q.ts, reverse=True)
     ]

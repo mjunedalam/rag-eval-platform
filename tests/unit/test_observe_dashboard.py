@@ -4,11 +4,13 @@ import json
 from datetime import timedelta
 from pathlib import Path
 
-from tests.unit.observe_records import T0, make_feedback, make_query, make_run
+import pytest
+from tests.unit.observe_records import T0, make_feedback, make_query, make_run, make_triad
 
 from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.observability.cost import Prices
 from rag_eval_platform.observability.dashboard import (
+    TRIAD_LABELS,
     baseline_values,
     bucket_size,
     buckets,
@@ -18,6 +20,8 @@ from rag_eval_platform.observability.dashboard import (
     query_rows,
     since_for,
     summarize,
+    triad_buckets,
+    triad_means,
 )
 
 
@@ -111,3 +115,48 @@ def test_query_rows_are_newest_first_and_filter_by_source() -> None:
     assert rows[1]["rating"] == "👎"
     assert len(str(rows[1]["question"])) <= 80
     assert [r["id"] for r in query_rows(queries, [], source="cli")] == ["q2"]
+
+
+def test_triad_means_average_each_metric_over_scored_answers() -> None:
+    scores = [
+        make_triad("q1", "groundedness", 1.0), make_triad("q2", "groundedness", 0.5),
+        make_triad("q1", "answer_relevance", 0.8),
+    ]  # fmt: skip
+
+    means = triad_means(scores)
+
+    assert means == {"context_relevance": None, "groundedness": 0.75, "answer_relevance": 0.8}
+    assert list(TRIAD_LABELS) == list(means)
+
+
+def test_triad_buckets_follow_the_answers_time() -> None:
+    queries = [make_query(0), make_query(1), make_query(90)]  # minutes after T0
+    scores = [make_triad("q0", value=0.4), make_triad("q1", value=0.6),
+              make_triad("q90", value=1.0)]  # fmt: skip
+
+    rows = triad_buckets(queries, scores, timedelta(hours=1))
+
+    assert [r.start for r in rows] == [T0, T0 + timedelta(hours=1)]
+    assert [r.means["groundedness"] for r in rows] == [pytest.approx(0.5), 1.0]
+    assert rows[0].means["context_relevance"] is None
+
+
+def test_query_rows_show_triad_scores_blank_while_pending() -> None:
+    queries = [make_query(1), make_query(2)]
+    scores = [
+        make_triad("q1", metric, value)
+        for metric, value in (
+            ("context_relevance", 0.666),
+            ("groundedness", 1.0),
+            ("answer_relevance", 0.9),
+        )
+    ]
+
+    rows = {r["id"]: r for r in query_rows(queries, [], scores=scores)}
+
+    assert (rows["q1"]["context"], rows["q1"]["grounded"], rows["q1"]["relevant"]) == (
+        0.67, 1.0, 0.9
+    )  # fmt: skip
+    assert (rows["q2"]["context"], rows["q2"]["grounded"], rows["q2"]["relevant"]) == (
+        None, None, None
+    )  # fmt: skip

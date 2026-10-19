@@ -31,7 +31,9 @@ from urllib.parse import quote
 
 Source = Literal["api", "playground", "cli"]
 EvalKind = Literal["retrieval", "generation", "gate"]
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+# TruLens' RAG triad (Phase 7b), one row per metric per answer in `trulens_scores`.
+TRIAD_METRICS = ("context_relevance", "groundedness", "answer_relevance")
 _FEEDBACK_FOR_CHUNK = 500  # SQLite's `IN (...)` list stays well under its variable limit
 
 _SCHEMA = """
@@ -53,6 +55,10 @@ CREATE TABLE IF NOT EXISTS eval_runs (
 );
 CREATE TABLE IF NOT EXISTS reviews (
     query_id TEXT PRIMARY KEY, ts TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS trulens_scores (
+    query_id TEXT NOT NULL, metric TEXT NOT NULL, value REAL NOT NULL, reason TEXT,
+    judge TEXT NOT NULL, ts TEXT NOT NULL, PRIMARY KEY (query_id, metric)
 );
 CREATE INDEX IF NOT EXISTS queries_ts ON queries(ts);
 CREATE INDEX IF NOT EXISTS queries_source_ts ON queries(source, ts);
@@ -131,6 +137,16 @@ class EvalRunRecord:
     passed: bool
     metrics: Mapping[str, float]
     fingerprint: str | None
+
+
+@dataclass(frozen=True)
+class TriadScoreRecord:
+    query_id: str
+    metric: str  # one of TRIAD_METRICS
+    value: float  # 0..1
+    reason: str | None
+    judge: str
+    ts: datetime
 
 
 def utc(ts: datetime) -> datetime:
@@ -365,6 +381,55 @@ class ObserveStore:
             )
             for row in rows
         ]  # fmt: skip
+
+    def save_triad_scores(self, records: Sequence[TriadScoreRecord]) -> None:
+        """Saves TruLens scores; scoring an answer again replaces its old values."""
+        self._require_writable()
+        with self._connect() as conn:
+            conn.executemany(
+                "INSERT OR REPLACE INTO trulens_scores VALUES (?, ?, ?, ?, ?, ?)",
+                [(r.query_id, r.metric, r.value, r.reason, r.judge, _text(r.ts))
+                 for r in records],
+            )  # fmt: skip
+
+    def triad_scores_for(self, query_ids: Sequence[str]) -> list[TriadScoreRecord]:
+        if not query_ids or self._missing():
+            return []
+        results: list[TriadScoreRecord] = []
+        with self._connect() as conn:
+            for start in range(0, len(query_ids), _FEEDBACK_FOR_CHUNK):
+                chunk = query_ids[start : start + _FEEDBACK_FOR_CHUNK]
+                placeholders = ", ".join("?" * len(chunk))
+                rows = conn.execute(
+                    f"SELECT * FROM trulens_scores WHERE query_id IN ({placeholders}) "  # noqa: S608
+                    "ORDER BY query_id, metric",
+                    tuple(chunk),
+                ).fetchall()  # fmt: skip
+                results.extend(
+                    TriadScoreRecord(
+                        row["query_id"],
+                        row["metric"],
+                        row["value"],
+                        row["reason"],
+                        row["judge"],
+                        _utc_time(row["ts"]),
+                    )
+                    for row in rows
+                )
+        return results
+
+    def unscored_query_ids(self, limit: int | None = None) -> list[str]:
+        """Answered questions (not refused, not failed) with no TruLens scores, newest first."""
+        if self._missing():
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM queries WHERE status = 'ok' AND refusal = 0 AND answer IS NOT NULL "
+                "AND id NOT IN (SELECT query_id FROM trulens_scores) ORDER BY ts DESC, id DESC "
+                "LIMIT ?",
+                (-1 if limit is None else limit,),
+            ).fetchall()  # fmt: skip
+        return [row["id"] for row in rows]
 
 
 def _feedback(row: sqlite3.Row) -> FeedbackRecord:

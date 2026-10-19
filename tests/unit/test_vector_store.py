@@ -36,8 +36,11 @@ class FakeCollection:
     def count(self) -> int:
         return len(self.rows)
 
-    def get(self, include: list[str], limit: int, offset: int) -> dict[str, Any]:
-        items = list(self.rows.items())[offset : offset + limit]
+    def get(self, include: list[str], limit: int | None = None, offset: int = 0,
+            ids: list[str] | None = None) -> dict[str, Any]:  # fmt: skip
+        items = [(i, self.rows[i]) for i in ids if i in self.rows] if ids is not None else (
+            list(self.rows.items())[offset : offset + (limit or len(self.rows))]
+        )  # fmt: skip
         return {
             "ids": [id_ for id_, _ in items],
             "embeddings": [row[0] for _, row in items],
@@ -236,3 +239,23 @@ class TestExport:
 
         with pytest.raises(VectorStoreError, match="Unexpected response"):
             store.export()
+
+
+class TestTexts:
+    def test_returns_the_text_of_each_found_chunk_in_the_order_asked(self) -> None:
+        client = FakeChromaClient()
+        store = ChromaVectorStore(client, "c")  # type: ignore[arg-type]
+        store.replace_all(
+            [Chunk(id="a#0", doc_id="a", index=0, text="first", start_index=0),
+             Chunk(id="a#1", doc_id="a", index=1, text="second", start_index=6)],
+            [[1.0], [0.5]],
+        )  # fmt: skip
+
+        # A chunk removed by a later re-seed is simply left out.
+        assert store.texts(["a#1", "gone#3", "a#0"]) == ("second", "first")
+        assert store.texts([]) == ()
+
+    def test_missing_collection_has_no_texts(self) -> None:
+        store = ChromaVectorStore(FakeChromaClient(), "absent")  # type: ignore[arg-type]
+
+        assert store.texts(["a#0"]) == ()
