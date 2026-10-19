@@ -4,6 +4,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from tests.unit.fake_tracer import FakeTracer
 from tests.unit.observe_records import T0
 from tests.unit.test_api_app import answer
 
@@ -120,3 +121,36 @@ def test_record_eval_run_never_raises(tmp_path: Path) -> None:
     (tmp_path / "rag.db").write_bytes(b"not a database" * 100)
 
     assert record_eval_run(ObserveStore(tmp_path / "rag.db"), "gate", True, {}, None) is None
+
+
+def test_record_uses_the_query_id_chosen_when_the_question_arrived(tmp_path: Path) -> None:
+    store = ObserveStore(tmp_path / "o.db")
+    log = logger_for(store)
+
+    assert (
+        log.record(answer(), retrieve_ms=1, total_ms=2, query_id="chosen-early") == "chosen-early"
+    )
+    assert log.record_error("q?", GenerationError("x"), total_ms=1, query_id="err-id") == "err-id"
+    assert store.get_query("chosen-early") is not None
+    assert store.get_query("err-id") is not None
+
+
+def test_record_feedback_also_scores_the_trace(tmp_path: Path) -> None:
+    store = ObserveStore(tmp_path / "o.db")
+    query_id = logger_for(store).record(answer(), retrieve_ms=1, total_ms=2)
+    assert query_id is not None
+    tracer = FakeTracer()
+
+    record_feedback(store, query_id, 0, "wrong source", "api", tracer=tracer)
+
+    assert tracer.scores == [{"query_id": query_id, "name": "user_feedback", "value": 0,
+                              "comment": "wrong source", "data_type": "BOOLEAN"}]  # fmt: skip
+
+
+def test_unknown_query_feedback_is_not_scored(tmp_path: Path) -> None:
+    tracer = FakeTracer()
+
+    with pytest.raises(UnknownQueryError):
+        record_feedback(ObserveStore(tmp_path / "o.db"), "ghost", 1, None, "api", tracer=tracer)
+
+    assert tracer.scores == []

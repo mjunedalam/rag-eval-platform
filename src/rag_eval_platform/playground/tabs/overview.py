@@ -23,16 +23,19 @@ from rag_eval_platform.generation.generator import (
     Generator,
     OpenAICompatibleClient,
 )
+from rag_eval_platform.pipeline import answer_metadata, trace_metadata
 from rag_eval_platform.playground import charts
 from rag_eval_platform.playground.answer_metrics import answer_health, health_html, health_rows
 from rag_eval_platform.playground.chat import Turn, add_turn, replace_turn, streaming_markdown
 from rag_eval_platform.playground.core import (
+    PLAYGROUND_COLLECTION,
     REPORTS_DIR,
     QueryTrace,
     load_reports,
     record_answer,
     record_failure,
     retrieve_step,
+    start_question_trace,
     trace_key,
 )
 from rag_eval_platform.playground.header import panel_title_html
@@ -180,6 +183,13 @@ def _run_live(question: str, ctx: TabContext, board: Dashboard | None) -> TabCon
     _say(status, status_line("embed", 0), bubble)
     time.sleep(speed.step_pause)
 
+    # One id for the question: its Langfuse trace and its row in the observability log.
+    query_id, question_trace = start_question_trace(
+        settings, question, style=options.answer_style,
+        metadata=trace_metadata(settings, collection=PLAYGROUND_COLLECTION) | {
+            "top_k": options.top_k, "rerank": options.rerank, "llm_model": options.model,
+        },
+    )  # fmt: skip
     try:
         show_phase("Retrieve", base)
         _say(status, status_line("search", 0, detail=f"{len(snapshot.chunks):,} chunks"), bubble)
@@ -190,9 +200,11 @@ def _run_live(question: str, ctx: TabContext, board: Dashboard | None) -> TabCon
             top_k=options.top_k,
             reranker=load_reranker(settings.reranker_model) if options.rerank else None,
             rerank_candidates=options.rerank_candidates,
+            trace=question_trace,
         )
     except (VectorStoreError, OptionalDependencyError, ValueError) as exc:
-        record_failure(settings, question, exc, style=options.answer_style,
+        question_trace.finish(error=exc)
+        record_failure(settings, question, exc, style=options.answer_style, query_id=query_id,
                        total_ms=(time.perf_counter() - started) * 1000)  # fmt: skip
         _fail(status, bubble, str(exc))
         return ctx
@@ -234,25 +246,27 @@ def _run_live(question: str, ctx: TabContext, board: Dashboard | None) -> TabCon
     })  # fmt: skip
     try:
         generator = Generator(OpenAICompatibleClient.from_settings(llm), options.answer_style)
-        stream = generator.stream(question, step.final_results)
+        stream = generator.stream(question, step.final_results, trace=question_trace.llm_ref)
         first_token_s = _type_out(
             stream, status, text, tiles, slots[5], stats, step.retrieval_ms, started, speed,
             bubble, len(step.final_results),
         )  # fmt: skip
     except (GenerationError, OptionalDependencyError, ValueError) as exc:
-        record_failure(settings, question, exc, style=options.answer_style,
+        question_trace.finish(error=exc)
+        record_failure(settings, question, exc, style=options.answer_style, query_id=query_id,
                        total_ms=(time.perf_counter() - started) * 1000)  # fmt: skip
         _fail(status, bubble, str(exc))
         return ctx
 
     answer = stream.answer
-    query_id = record_answer(settings, answer, retrieve_ms=step.retrieval_ms,
-                             total_ms=(time.perf_counter() - started) * 1000,
-                             style=options.answer_style)  # fmt: skip
+    question_trace.finish(answer=answer.text, metadata=answer_metadata(answer))
+    logged_id = record_answer(settings, answer, retrieve_ms=step.retrieval_ms,
+                              total_ms=(time.perf_counter() - started) * 1000,
+                              style=options.answer_style, query_id=query_id)  # fmt: skip
     trace = QueryTrace(step.vector_results, step.final_results, answer, step.retrieval_ms,
                        step.query_embedding)  # fmt: skip
     # Saved before the next st.* call, so a click now cannot lose the answer.
-    turn = Turn(trace, first_token_s, query_id=query_id)
+    turn = Turn(trace, first_token_s, query_id=logged_id)
     history: tuple[Turn, ...] = st.session_state.get(HISTORY, ())
     replace_at = st.session_state.pop(PENDING_REPLACE, None)
     st.session_state[HISTORY] = (

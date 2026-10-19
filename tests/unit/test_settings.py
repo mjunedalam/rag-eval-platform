@@ -24,6 +24,11 @@ SETTINGS_ENV_VARS = (
     "RAG_JUDGE_MODEL",
     "RAG_JUDGE_TEMPERATURE",
     "RAG_JUDGE_MAX_TOKENS",
+    "LANGFUSE_PUBLIC_KEY",
+    "LANGFUSE_SECRET_KEY",
+    "LANGFUSE_BASE_URL",
+    "RAG_LANGFUSE_ENABLED",
+    "RAG_LANGFUSE_ENVIRONMENT",
 )
 
 
@@ -268,3 +273,47 @@ def test_observability_settings_are_validated(
 
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+class TestLangfuseSettings:
+    def test_defaults_are_off_until_keys_are_set(self) -> None:
+        settings = Settings()
+
+        assert settings.langfuse_public_key is None
+        assert settings.langfuse_secret_key is None
+        assert settings.langfuse_base_url == "https://cloud.langfuse.com"
+        assert settings.langfuse_enabled is True
+        assert settings.langfuse_environment == "development"
+        assert settings.langfuse_ready is False
+
+    def test_reads_langfuses_standard_unprefixed_names_and_hides_the_secret(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "fake-public-value")
+        monkeypatch.setenv("LANGFUSE_SECRET_KEY", "fake-secret-value")
+        monkeypatch.setenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com")
+
+        settings = Settings()
+
+        assert settings.langfuse_public_key == "fake-public-value"
+        assert settings.langfuse_secret_key is not None
+        assert settings.langfuse_secret_key.get_secret_value() == "fake-secret-value"
+        assert "fake-secret-value" not in repr(settings)
+        assert settings.langfuse_base_url == "https://us.cloud.langfuse.com"
+        assert settings.langfuse_ready is True
+
+    def test_disabled_is_not_ready_even_with_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "fake-public-value")
+        monkeypatch.setenv("LANGFUSE_SECRET_KEY", "fake-secret-value")
+        monkeypatch.setenv("RAG_LANGFUSE_ENABLED", "false")
+
+        assert Settings().langfuse_ready is False
+
+    @pytest.mark.parametrize("environment", ["Production", "my env", "langfuse-test", ""])
+    def test_rejects_environment_names_langfuse_does_not_allow(
+        self, monkeypatch: pytest.MonkeyPatch, environment: str
+    ) -> None:
+        monkeypatch.setenv("RAG_LANGFUSE_ENVIRONMENT", environment)
+
+        with pytest.raises(ValidationError):
+            Settings()

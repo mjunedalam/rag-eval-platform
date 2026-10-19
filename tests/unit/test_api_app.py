@@ -7,17 +7,20 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.unit.fake_tracer import FakeTracer
 from tests.unit.observe_records import make_query, make_run
 from tests.unit.test_api_schemas import SOURCE
 
+from rag_eval_platform.api import main as api_main
 from rag_eval_platform.api.main import create_app
 from rag_eval_platform.api.schemas import CheckOut
 from rag_eval_platform.api.security import RateLimiter
 from rag_eval_platform.api.services import ApiServices
+from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.generation.generator import Answer, Citation, GenerationError
 from rag_eval_platform.observability.drift import DriftThresholds
 from rag_eval_platform.observability.store import ObserveStore
-from rag_eval_platform.pipeline import TimedAnswer
+from rag_eval_platform.pipeline import RagPipeline, TimedAnswer
 from rag_eval_platform.retrieval.vector_store import VectorStoreError
 
 
@@ -59,13 +62,15 @@ class FakePipeline:
 
 def client(pipeline: FakePipeline | None = None, *, key: str | None = None, limit: int = 30,
            healthy: bool = True, store: ObserveStore | None = None,
-           drift: DriftThresholds | None = None) -> TestClient:  # fmt: skip
+           drift: DriftThresholds | None = None,
+           tracer: FakeTracer | None = None) -> TestClient:  # fmt: skip
     pipe = pipeline or FakePipeline()
     services = ApiServices(
         pipelines={"concise": pipe, "detailed": pipe},
         checks={"chroma": lambda: CheckOut(ok=True, detail="40 chunks"),
                 "llm": lambda: CheckOut(ok=healthy, detail="qwen3:8b" if healthy else "down")},
         api_key=key, limiter=RateLimiter(limit), store=store, drift=drift or DriftThresholds(),
+        **({"tracer": tracer} if tracer is not None else {}),
     )  # fmt: skip
     return TestClient(create_app(services))
 
@@ -332,3 +337,42 @@ def test_a_broken_log_never_breaks_health(tmp_path: Path) -> None:
 
     assert body.status_code == 200
     assert body.json()["warnings"] == []
+
+
+def test_feedback_also_scores_the_trace(store: ObserveStore) -> None:
+    store.add_query(make_query(1))
+    tracer = FakeTracer()
+
+    response = client(store=store, tracer=tracer).post(
+        "/feedback", json={"query_id": "q1", "rating": "down", "comment": "wrong page"}
+    )
+
+    assert response.status_code == 201
+    assert tracer.scores == [{"query_id": "q1", "name": "user_feedback", "value": 0,
+                              "comment": "wrong page", "data_type": "BOOLEAN"}]  # fmt: skip
+
+
+def test_pending_traces_are_flushed_when_the_server_stops() -> None:
+    tracer = FakeTracer()
+
+    with client(tracer=tracer):
+        assert tracer.flushed == 0
+
+    assert tracer.flushed == 1
+
+
+def test_app_from_settings_traces_each_answer_style(monkeypatch: pytest.MonkeyPatch) -> None:
+    tracer = FakeTracer()
+    monkeypatch.setattr(api_main, "create_retriever", lambda settings: object())
+    monkeypatch.setattr(api_main, "create_generator", lambda settings, style: object())
+    monkeypatch.setattr(api_main, "create_tracer", lambda settings: tracer)
+    monkeypatch.setattr(api_main, "create_vector_store", lambda settings: object())
+
+    app = api_main.create_app_from_settings(Settings(observe_enabled=False))
+
+    services: ApiServices = app.state.services
+    assert services.tracer is tracer
+    for style, pipeline in services.pipelines.items():
+        assert isinstance(pipeline, RagPipeline)
+        assert pipeline.tracer is tracer
+        assert pipeline.tags == ("api", style)

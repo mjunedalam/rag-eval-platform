@@ -7,6 +7,7 @@ from a larger candidate set.
 
 from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.ingestion.embedding import Embedder, create_embedder
+from rag_eval_platform.observability.tracing import NOOP_QUESTION, QuestionTrace, chunk_rows
 from rag_eval_platform.retrieval.reranker import CrossEncoderReranker, Reranker
 from rag_eval_platform.retrieval.vector_store import (
     SearchResult,
@@ -34,15 +35,36 @@ class Retriever:
 
     def retrieve(self, query: str) -> list[SearchResult]:
         """Return up to ``top_k`` chunks, most relevant first."""
+        return self.retrieve_traced(query, NOOP_QUESTION)
+
+    def retrieve_traced(self, query: str, trace: QuestionTrace) -> list[SearchResult]:
+        """``retrieve``, recording vector search and re-ranking as stages of ``trace``."""
         if not query.strip():
             raise ValueError("query must not be blank")
 
-        query_embedding = self.embedder.embed_query(query)
+        candidates = self.top_k if self.reranker is None else max(self.rerank_candidates,
+                                                                  self.top_k)  # fmt: skip
+        stage = trace.stage("retrieve-context", input=query, metadata={
+            "top_k": self.top_k, "candidates": candidates, "reranked": self.reranker is not None,
+        })  # fmt: skip
+        try:
+            found = self.store.search(self.embedder.embed_query(query), k=candidates)
+        except Exception as exc:
+            stage.end(error=exc)
+            raise
+        stage.end(output=chunk_rows(found))
         if self.reranker is None:
-            return self.store.search(query_embedding, k=self.top_k)
+            return found
 
-        candidates = self.store.search(query_embedding, k=max(self.rerank_candidates, self.top_k))
-        return self.reranker.rerank(query, candidates, top_n=self.top_k)
+        rerank = trace.stage("rerank-chunks", input=query,
+                             metadata={"candidates": len(found), "top_n": self.top_k})  # fmt: skip
+        try:
+            final = self.reranker.rerank(query, found, top_n=self.top_k)
+        except Exception as exc:
+            rerank.end(error=exc)
+            raise
+        rerank.end(output=chunk_rows(final))
+        return final
 
 
 def create_retriever(settings: Settings) -> Retriever:

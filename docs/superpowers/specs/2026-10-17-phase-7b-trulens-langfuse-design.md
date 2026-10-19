@@ -1,6 +1,6 @@
 # Phase 7b — TruLens and Langfuse: design
 
-**Status:** approved in conversation, awaiting written-spec review
+**Status:** Langfuse tracing implemented and verified against Langfuse Cloud (2026-10-18); TruLens scoring not yet started.
 **Branch:** `feat/phase-7b-trulens-langfuse`
 **Follows:** Phase 7a (observability core: SQLite log, ⑧ Observe, feedback, drift). **Followed by:** Phase 8 (security and governance).
 
@@ -25,6 +25,21 @@ The SQLite log stays the single source of truth. Both tools are add-ons that can
 | TruLens judge | **`gemma3:4b`** on Ollama: about 4 GB, so it stays loaded next to `qwen3:8b` (about 10.5 GB together on 18 GB) and models are not swapped. The careful Phase 4 evaluation and the CI gate keep `gemma3:12b`. Settings reject a TruLens judge equal to the generator. |
 | Integration style | **Thin adapters behind interfaces** (approach 1 of 3). Native `@observe`/`TruApp` instrumentation was rejected because it couples the core to two vendors and adds a second database; a pure OpenTelemetry route was rejected as more configuration for less learning value. |
 | TruLens dashboard | Still excluded (it pins `plotly<7`; the playground needs `plotly>=7.1`). Scores are shown in ⑧ Observe, as the 7a spec decided. |
+
+## Revisions from the official Langfuse guidance
+
+Added after installing the official Langfuse agent skill (github.com/langfuse/skills) and reading the current docs (best practices, OpenAI Python integration, Python SDK instrumentation, masking). These override the matching details further down:
+
+- **The LLM call uses the official `langfuse.openai` integration**, not a hand-built generation span: our `OpenAICompatibleClient` is created from `langfuse.openai` when tracing is on. It records model, prompt, output (including any thinking), tokens, cost, streaming and time to first token, and API errors, and nests under the active observation.
+- **Names are verb-first and stable:** trace root `answer-question`; children `retrieve-context` (type `retriever`), `rerank-chunks` (type `retriever`, only with re-ranking) and `generate-answer` (type `generation`, from the integration). Run-specific values go in metadata, never in names.
+- **Trace input/output** are set on the root observation: the question, and the answer.
+- **Tags** (set at creation, immutable): the source (`api`, `cli`, `playground`) and the answer style.
+- **Environment and release:** `environment` from `RAG_LANGFUSE_ENVIRONMENT` (default `development`), `release` = the package version.
+- **Settings use Langfuse's standard names** `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` (replacing `RAG_LANGFUSE_HOST`; this project uses the US region, `https://us.cloud.langfuse.com`). The client is built from typed settings with explicit arguments, so it never depends on import order or on `os.environ`.
+- **Text hiding** for `RAG_OBSERVE_STORE_TEXT=false` uses the SDK's masking hook instead of custom hashing.
+- **Context across threads:** the playground streams on a background thread; that thread runs inside a copy of the caller's context (`contextvars`), so the generation stays nested in the question's trace.
+- **Seeded trace ids without a fake parent (found in the self-audit):** passing `trace_context={"trace_id": ...}` without a parent span makes the SDK invent a random remote parent, so Langfuse reported no logical root. The root now gets the seeded id from a custom OpenTelemetry id generator passed to the client (`id_generator=`), and is created with no `trace_context`; a re-fetched trace shows `answer-question` as its logical root.
+- **Required self-audit:** after instrumenting, send a real trace, fetch it back with the Langfuse CLI, check it against the best-practices page, fix gaps and repeat until clean.
 
 ## Facts that shaped the design
 
@@ -99,7 +114,8 @@ All have defaults; `.env.example` documents them with empty secret values.
 | Setting | Default | Notes |
 |---|---|---|
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | empty | Langfuse's standard names, unprefixed like the other keys; the secret is a `SecretStr`. Only in `.env`. |
-| `RAG_LANGFUSE_HOST` | `https://cloud.langfuse.com` | EU region; `https://us.cloud.langfuse.com` for the US region, or a self-hosted URL |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse's standard name. EU by default; this project's `.env` uses `https://us.cloud.langfuse.com` |
+| `RAG_LANGFUSE_ENVIRONMENT` | `development` | Langfuse environment, so test traces stay apart from production ones |
 | `RAG_LANGFUSE_ENABLED` | `true` | Does nothing until both keys are set |
 | `RAG_TRULENS_ENABLED` | `true` | Background scoring on or off |
 | `RAG_TRULENS_JUDGE_MODEL` | `gemma3:4b` | Rejected if equal to `RAG_LLM_MODEL` |

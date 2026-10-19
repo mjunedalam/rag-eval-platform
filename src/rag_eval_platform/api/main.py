@@ -2,7 +2,8 @@
 the real ones (the models load once, at startup)."""
 
 import logging
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from typing import get_args
 
 from fastapi import FastAPI, Request
@@ -20,8 +21,9 @@ from rag_eval_platform.config.settings import Settings
 from rag_eval_platform.generation.generator import create_generator
 from rag_eval_platform.generation.prompt_templates import AnswerStyle
 from rag_eval_platform.observability.drift import DriftThresholds
+from rag_eval_platform.observability.langfuse_tracer import create_tracer
 from rag_eval_platform.observability.logger import create_query_logger, create_store
-from rag_eval_platform.pipeline import RagPipeline
+from rag_eval_platform.pipeline import RagPipeline, trace_metadata
 from rag_eval_platform.retrieval.retriever import create_retriever
 from rag_eval_platform.retrieval.vector_store import create_vector_store
 
@@ -39,10 +41,16 @@ def _error(status: int, error: str, hint: str | None = None,
 
 
 def create_app(services: ApiServices) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        yield
+        services.tracer.flush()  # send buffered traces and scores before the server stops
+
     app = FastAPI(
         title="RAG Eval Platform API",
         version="1.0.0",
         description="Cited answers from your documents: retrieve, then generate.",
+        lifespan=lifespan,
     )
     app.state.services = services
     app.include_router(router)
@@ -79,10 +87,11 @@ def create_app(services: ApiServices) -> FastAPI:
 
 def create_app_from_settings(settings: Settings) -> FastAPI:
     """The real services: one retriever (models load once) shared by both answer styles."""
-    retriever = create_retriever(settings)
+    retriever, tracer = create_retriever(settings), create_tracer(settings)
     pipelines: dict[AnswerStyle, QueryPipeline] = {
         style: RagPipeline(retriever, create_generator(settings, style),
-                           create_query_logger(settings, "api", style=style))
+                           create_query_logger(settings, "api", style=style), tracer=tracer,
+                           tags=("api", style), trace_metadata=trace_metadata(settings))
         for style in get_args(AnswerStyle)
     }  # fmt: skip
     key = settings.api_key.get_secret_value() if settings.api_key else None
@@ -91,6 +100,7 @@ def create_app_from_settings(settings: Settings) -> FastAPI:
         checks={"chroma": chroma_check(create_vector_store(settings)), "llm": _llm_check(settings)},
         api_key=key, limiter=RateLimiter(settings.api_rate_limit),
         store=create_store(settings), drift=DriftThresholds.from_settings(settings),
+        tracer=tracer,
     )  # fmt: skip
     return create_app(services)
 

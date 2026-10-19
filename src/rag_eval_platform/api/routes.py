@@ -80,12 +80,13 @@ def query_stream(body: QueryRequest, request: Request) -> StreamingResponse:
              responses=_FEEDBACK_ERRORS,
              dependencies=[Depends(guard)])  # fmt: skip
 def feedback(body: FeedbackRequest, request: Request) -> FeedbackResponse:
-    store = services_of(request).store
+    services = services_of(request)
+    store = services.store
     if store is None:
         raise ObserveStoreError("Observability is turned off")
     rating = 1 if body.rating == "up" else 0
     return FeedbackResponse(id=record_feedback(store, body.query_id, rating, body.comment or None,
-                                               "api"))  # fmt: skip
+                                               "api", tracer=services.tracer))  # fmt: skip
 
 
 def _events(pipeline: QueryPipeline, question: str) -> Iterator[str]:

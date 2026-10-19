@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from tests.pdf_builder import build_pdf
+from tests.unit.fake_tracer import FakeQuestion
 
 from rag_eval_platform.generation.generator import Completion, Generator
 from rag_eval_platform.generation.prompt_templates import Message
@@ -226,3 +227,15 @@ def test_retrieve_step_returns_rankings_without_generating() -> None:
     assert [r.chunk.id for r in step.vector_results] == ["d#0", "d#1", "d#2", "d#3"]
     assert [r.chunk.id for r in step.final_results] == ["d#3", "d#2"]
     assert step.retrieval_ms >= 0
+
+
+def test_retrieve_step_records_its_stages_on_the_trace() -> None:
+    trace = FakeQuestion("q1", "q?", (), None)
+
+    retrieve_step("q?", embedder=FakeEmbedder(), store=RankedStore(ranked(6)), top_k=2,
+                  reranker=ReverseReranker(), rerank_candidates=4, trace=trace)  # fmt: skip
+
+    retrieve, rerank = trace.stages
+    assert (retrieve.name, rerank.name) == ("retrieve-context", "rerank-chunks")
+    assert [row["chunk_id"] for row in retrieve.output] == ["d#0", "d#1", "d#2", "d#3"]
+    assert [row["chunk_id"] for row in rerank.output] == ["d#3", "d#2"]

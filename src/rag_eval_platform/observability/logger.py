@@ -25,6 +25,7 @@ from rag_eval_platform.observability.store import (
     QueryRecord,
     Source,
 )
+from rag_eval_platform.observability.tracing import NOOP_TRACER, Tracer
 
 logger = logging.getLogger(__name__)
 Clock = Callable[[], datetime]
@@ -48,9 +49,13 @@ class QueryLogger:
         self._store, self._source, self._collection, self._style = store, source, collection, style
         self._prices, self._store_text, self._clock = prices, store_text, clock
 
-    def record(self, answer: Answer, *, retrieve_ms: float, total_ms: float) -> str | None:
+    def record(self, answer: Answer, *, retrieve_ms: float, total_ms: float,
+               query_id: str | None = None) -> str | None:  # fmt: skip
+        """Store one answer; ``query_id`` is the id chosen when the question arrived (it also
+        names the question's trace), or a new one."""
         return self._save(QueryRecord(
-            id=new_id(), ts=self._clock(), source=self._source, collection=self._collection,
+            id=query_id or new_id(), ts=self._clock(), source=self._source,
+            collection=self._collection,
             question=self._question(answer.question),
             answer=answer.text if self._store_text else None, style=self._style,
             prompt_version=answer.prompt_version, model=answer.model, refusal=answer.is_refusal,
@@ -64,9 +69,11 @@ class QueryLogger:
             status="ok",
         ))  # fmt: skip
 
-    def record_error(self, question: str, error: BaseException, *, total_ms: float) -> str | None:
+    def record_error(self, question: str, error: BaseException, *, total_ms: float,
+                     query_id: str | None = None) -> str | None:  # fmt: skip
         return self._save(QueryRecord(
-            id=new_id(), ts=self._clock(), source=self._source, collection=self._collection,
+            id=query_id or new_id(), ts=self._clock(), source=self._source,
+            collection=self._collection,
             question=self._question(question), answer=None, style=self._style,
             prompt_version=None, model=None, refusal=False, retrieved_chunk_ids=(),
             cited_doc_ids=(), invalid_citations=(), input_tokens=None, output_tokens=None,
@@ -120,9 +127,12 @@ def create_query_logger(settings: Settings, source: Source, *, collection: str |
 
 
 def record_feedback(store: ObserveStore, query_id: str, rating: int, comment: str | None,
-                    source: Source, clock: Clock = utc_now) -> str:  # fmt: skip
+                    source: Source, clock: Clock = utc_now,
+                    tracer: Tracer = NOOP_TRACER) -> str:  # fmt: skip
+    """Store a 👍 (1) or 👎 (0); it also becomes the ``user_feedback`` score on the trace."""
     record = FeedbackRecord(new_id(), query_id, clock(), rating, comment, source)
     store.add_feedback(record)
+    tracer.score(query_id, "user_feedback", rating, comment=comment, data_type="BOOLEAN")
     return record.id
 
 
